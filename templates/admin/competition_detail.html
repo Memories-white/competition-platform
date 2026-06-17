@@ -218,14 +218,32 @@
                         <textarea class="form-control" name="description" id="createDesc" rows="2" placeholder="选手需要完成的任务说明"></textarea>
                     </div>
                     {% if presets %}
-                    <div class="mb-3">
-                        <label class="form-label"><i class="bi bi-journal-bookmark-fill me-1"></i>从题库选择（可选）</label>
-                        <select class="form-select" id="presetSelector" onchange="applyPreset()">
-                            <option value="">— 手动填写 —</option>
-                            {% for p in presets %}
-                            <option value="{{ p.id }}">{{ p.title }}（{{ p.category }} / {{ p.difficulty }}）</option>
-                            {% endfor %}
-                        </select>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label"><i class="bi bi-journal-bookmark-fill me-1"></i>从题库选择（可选）</label>
+                            <select class="form-select" id="presetSelector" onchange="applyPreset()">
+                                <option value="">— 手动填写 —</option>
+                                {% for p in presets %}
+                                <option value="{{ p.id }}">{{ p.title }}（{{ p.difficulty }}）</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label">操作系统</label>
+                            <select class="form-select" id="osSelector" onchange="applyOsToDockerfile()">
+                                <option value="Ubuntu 22.04">Ubuntu 22.04</option>
+                                <option value="Ubuntu 20.04">Ubuntu 20.04</option>
+                                <option value="CentOS 7">CentOS 7</option>
+                                <option value="Debian 12">Debian 12</option>
+                                <option value="Rocky Linux 9">Rocky Linux 9</option>
+                            </select>
+                        </div>
+                        <div class="col-3 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="installDockerChk" onchange="applyPreset()">
+                                <label class="form-check-label small" for="installDockerChk">安装 Docker</label>
+                            </div>
+                        </div>
                     </div>
                     {% endif %}
                     <div id="createDockerFields">
@@ -640,7 +658,19 @@ if (activeTab) {
 }
 {% if presets %}
 const PRESET_DATA = {{ presets | tojson | safe }};
+const OS_IMAGES = {
+    'Ubuntu 22.04': 'ubuntu:22.04',
+    'Ubuntu 20.04': 'ubuntu:20.04',
+    'CentOS 7': 'centos:7',
+    'Debian 12': 'debian:12',
+    'Rocky Linux 9': 'rockylinux:9',
+};
 {% endif %}
+
+function applyOsToDockerfile() {
+    if (!document.getElementById('presetSelector').value) return;
+    applyPreset();
+}
 
 function applyPreset() {
     const sel = document.getElementById('presetSelector');
@@ -652,7 +682,37 @@ function applyPreset() {
     if (p.login_info) document.querySelector('#createChallengeModal input[name="login_info"]').value = p.login_info;
     if (p.judge_type) document.querySelector('#createChallengeModal select[name="judge_type"]').value = p.judge_type;
     if (p.judge_config) document.querySelector('#createChallengeModal input[name="judge_config"]').value = p.judge_config;
-    if (p.dockerfile_content) document.querySelector('#createChallengeModal textarea[name="dockerfile_content"]').value = p.dockerfile_content;
+
+    // Build Dockerfile with OS selection
+    let df = p.dockerfile_content;
+    const osChoice = document.getElementById('osSelector').value;
+    const osImage = OS_IMAGES[osChoice] || 'ubuntu:22.04';
+    df = df.replace(/FROM .+/, 'FROM ' + osImage);
+
+    if (document.getElementById('installDockerChk').checked) {
+        // Inject Docker CLI install after apt-get/yum install line
+        const lines = df.split('\n');
+        const result = [];
+        let injected = false;
+        for (const line of lines) {
+            result.push(line);
+            if (!injected && (line.includes('apt-get install') || line.includes('yum install') || line.includes('dnf install'))) {
+                if (osChoice === 'CentOS 7') {
+                    result.push('RUN yum install -y yum-utils && yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && yum install -y docker-ce-cli');
+                } else if (osChoice === 'Rocky Linux 9') {
+                    result.push('RUN dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo && dnf install -y docker-ce-cli');
+                } else if (osChoice.startsWith('Ubuntu')) {
+                    const codename = osChoice === 'Ubuntu 20.04' ? 'focal' : 'jammy';
+                    result.push(`RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu ${codename} stable" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli`);
+                } else if (osChoice.startsWith('Debian')) {
+                    result.push('RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli');
+                }
+                injected = true;
+            }
+        }
+        df = result.join('\n');
+    }
+    document.querySelector('#createChallengeModal textarea[name="dockerfile_content"]').value = df;
     document.querySelector('#createChallengeModal select[name="challenge_type"]').value = 'docker';
     toggleDockerFields('create');
 }

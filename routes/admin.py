@@ -8,6 +8,38 @@ from models.models import Competition, Challenge, Environment, Score, User, Exam
 from docker_engine.builder import build_image, build_image_from_template, get_image_info, get_available_templates
 from docker_engine.manager import get_container_status, start_container, stop_container, remove_container
 from data.presets import PRESETS
+
+OS_IMAGES = {
+    "Ubuntu 22.04": "ubuntu:22.04",
+    "Ubuntu 20.04": "ubuntu:20.04",
+    "CentOS 7": "centos:7",
+    "Debian 12": "debian:12",
+    "Rocky Linux 9": "rockylinux:9",
+}
+
+DOCKER_INSTALL_CMDS = {
+    "Ubuntu 22.04": "RUN apt-get update && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
+    "Ubuntu 20.04": "RUN apt-get update && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
+    "Debian 12": "RUN apt-get update && apt-get install -y ca-certificates curl && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
+    "CentOS 7": "RUN yum install -y yum-utils && yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && yum install -y docker-ce-cli",
+    "Rocky Linux 9": "RUN dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo && dnf install -y docker-ce-cli",
+}
+
+def _inject_docker_install(dockerfile, os_choice):
+    """Inject Docker CLI installation commands into a Dockerfile after the base packages."""
+    cmd = DOCKER_INSTALL_CMDS.get(os_choice)
+    if not cmd:
+        return dockerfile
+    # Insert after the first apt-get install / yum install line
+    lines = dockerfile.split("\n")
+    result = []
+    injected = False
+    for line in lines:
+        result.append(line)
+        if not injected and ("apt-get install" in line or "yum install" in line or "dnf install" in line):
+            result.append(f"# Auto-install Docker CLI\n{cmd}")
+            injected = True
+    return "\n".join(result)
 from services.environment_service import (
     deploy_competition_environments,
     stop_all_environments,
@@ -47,7 +79,7 @@ def dashboard():
 @admin_required
 def competitions():
     comps = Competition.query.order_by(Competition.created_at.desc()).all()
-    return render_template("admin/competitions.html", competitions=comps)
+    return render_template("admin/competitions.html", competitions=comps, presets=PRESETS)
 
 
 @admin_bp.route("/competitions/create", methods=["POST"])
@@ -75,7 +107,47 @@ def create_competition():
         )
         db.session.add(comp)
         db.session.commit()
-        flash("竞赛创建成功", "success")
+
+        # Create challenges from selected presets
+        preset_ids = request.form.getlist("preset_ids")
+        if preset_ids:
+            created = 0
+            for pid in preset_ids:
+                pid = int(pid)
+                preset = next((p for p in PRESETS if p["id"] == pid), None)
+                if not preset:
+                    continue
+                dockerfile = preset["dockerfile_content"]
+                # Apply OS selection
+                os_choice = request.form.get("os_choice", "Ubuntu 22.04")
+                os_image = OS_IMAGES.get(os_choice, "ubuntu:22.04")
+                dockerfile = dockerfile.replace("FROM ubuntu:22.04", f"FROM {os_image}")
+                # Add Docker installation if requested
+                if request.form.get("install_docker") == "on":
+                    dockerfile = _inject_docker_install(dockerfile, os_choice)
+                chal = Challenge(
+                    competition_id=comp.id,
+                    title=preset["title"],
+                    description=preset["description"],
+                    challenge_type="docker",
+                    login_info=preset.get("login_info", ""),
+                    judge_type=preset.get("judge_type", "port"),
+                    judge_config=preset.get("judge_config", "{}"),
+                    dockerfile_content=dockerfile,
+                    points=100,
+                    order=created + 1,
+                )
+                db.session.add(chal)
+                try:
+                    build_image(dockerfile, f"comp-{comp.id}-preset-{pid}")
+                    chal.image_tag = f"comp-{comp.id}-preset-{pid}"
+                except Exception:
+                    pass
+                created += 1
+            db.session.commit()
+            flash(f"竞赛创建成功，已从题库添加 {created} 道题目", "success")
+        else:
+            flash("竞赛创建成功，请进入管理页添加题目", "success")
     except Exception as e:
         flash(f"创建失败: {e}", "error")
 
