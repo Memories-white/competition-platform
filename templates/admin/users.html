@@ -2,42 +2,44 @@
 {% block title %}用户管理{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="page-header">
     <h4><i class="bi bi-people"></i> 用户管理</h4>
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
-        <i class="bi bi-person-plus"></i> 创建选手账号
+        <i class="bi bi-person-plus"></i> 创建选手
     </button>
 </div>
 
-<div class="table-responsive">
-    <table class="table table-hover">
-        <thead class="table-dark">
-            <tr><th>ID</th><th>用户名</th><th>角色</th><th>队伍</th><th>创建时间</th><th>操作</th></tr>
-        </thead>
-        <tbody>
-            {% for u in users %}
-            <tr>
-                <td>{{ u.id }}</td>
-                <td>{{ u.username }}</td>
-                <td><span class="badge bg-{{ 'primary' if u.role=='admin' else 'info' }}">{{ '管理员' if u.role=='admin' else '选手' }}</span></td>
-                <td>{{ u.team_name or '-' }}</td>
-                <td class="small">{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
-                <td>
-                    {% if u.role != 'admin' %}
-                    <form method="POST" action="{{ url_for('admin.reset_password', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('确定重置该用户密码为 player123 吗？')">
-                        <button class="btn btn-warning btn-sm" title="重置密码"><i class="bi bi-key"></i></button>
-                    </form>
-                    <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('确定删除此用户及所有关联数据？')">
-                        <button class="btn btn-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
-                    </form>
-                    {% else %}
-                    <span class="text-muted small">—</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr><th>ID</th><th>用户名</th><th>角色</th><th>队伍</th><th>创建时间</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.id }}</td>
+                    <td><strong>{{ u.username }}</strong></td>
+                    <td><span class="badge bg-{{ 'primary' if u.role=='admin' else 'info' }}">{{ '管理员' if u.role=='admin' else '选手' }}</span></td>
+                    <td>{{ u.team_name or '-' }}</td>
+                    <td class="small text-muted">{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+                    <td>
+                        {% if u.role != 'admin' %}
+                        <form method="POST" action="{{ url_for('admin.reset_password', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('确定重置该用户密码为 player123 吗？')">
+                            <button class="btn btn-warning btn-sm" title="重置密码"><i class="bi bi-key"></i></button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('确定删除此用户及所有关联数据？')">
+                            <button class="btn btn-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
+                        </form>
+                        {% else %}
+                        <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <!-- Create User Modal -->
@@ -54,11 +56,11 @@
                     <div class="mb-3">
                         <label class="form-label">密码 *</label>
                         <input type="text" class="form-control" name="password" value="player123" required>
-                        <small class="text-muted">默认密码 player123，选手可自行修改</small>
+                        <small class="text-muted">默认密码 player123</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">队伍名称</label>
-                        <input type="text" class="form-control" name="team_name" placeholder="例: 云计算先锋队">
+                        <input type="text" class="form-control" name="team_name" placeholder="例：云计算先锋队">
                     </div>
                 </div>
                 <div class="modal-footer">

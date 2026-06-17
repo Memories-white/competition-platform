@@ -2,7 +2,7 @@
 {% block title %}竞赛管理{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="page-header">
     <h4><i class="bi bi-trophy"></i> 竞赛管理</h4>
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCompModal">
         <i class="bi bi-plus-lg"></i> 创建竞赛
@@ -14,22 +14,22 @@
     {% for comp in competitions %}
     <div class="col-lg-4 col-md-6">
         <div class="card h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between mb-2">
-                    <h5 class="card-title mb-0">{{ comp.name }}</h5>
+            <div class="card-body d-flex flex-column">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h5 class="card-title mb-0" style="font-weight:700;">{{ comp.name }}</h5>
                     <span class="badge bg-{{ 'success' if comp.status=='active' else 'secondary' if comp.status=='draft' else 'info' }}">
                         {{ {'draft':'草稿','active':'进行中','finished':'已结束'}.get(comp.status, comp.status) }}
                     </span>
                 </div>
                 <p class="text-muted small mb-3">{{ comp.description or '暂无描述' }}</p>
+
                 <div class="small text-muted mb-3">
-                    时间: {{ comp.start_time.strftime('%m-%d %H:%M') if comp.start_time else '-' }} ~ {{ comp.end_time.strftime('%m-%d %H:%M') if comp.end_time else '-' }}<br>
-                    资源: CPU {{ comp.cpu_limit }}核 / {{ comp.mem_limit }}<br>
-                    题目: {{ comp.challenges|length }}个 | 环境: {{ comp.environments|length }}个
+                    <div><i class="bi bi-calendar3 me-1"></i> {{ comp.start_time.strftime('%m-%d %H:%M') if comp.start_time else '-' }} ~ {{ comp.end_time.strftime('%m-%d %H:%M') if comp.end_time else '-' }}</div>
+                    <div><i class="bi bi-cpu me-1"></i> CPU {{ comp.cpu_limit }}核 · 内存 {{ comp.mem_limit }}</div>
+                    <div><i class="bi bi-box me-1"></i> {{ comp.challenges|length }} 题 · {{ comp.environments|length }} 环境</div>
                 </div>
 
-                <a href="{{ url_for('admin.competition_detail', comp_id=comp.id) }}"
-                   class="btn btn-primary btn-sm w-100 mb-2">
+                <a href="{{ url_for('admin.competition_detail', comp_id=comp.id) }}" class="btn btn-primary btn-sm w-100 mb-2 mt-auto">
                     <i class="bi bi-gear"></i> 管理此竞赛
                 </a>
 
@@ -37,16 +37,13 @@
                     <form method="POST" action="{{ url_for('admin.update_competition_status', comp_id=comp.id) }}" class="flex-grow-1">
                         <input type="hidden" name="status" value="{{ 'active' if comp.status=='draft' else 'finished' if comp.status=='active' else 'draft' }}">
                         <button type="submit" class="btn btn-outline-{{ 'success' if comp.status=='draft' else 'warning' if comp.status=='active' else 'secondary' }} btn-sm w-100">
-                            {% if comp.status == 'draft' %}<i class="bi bi-play-fill"></i> 开始竞赛
-                            {% elif comp.status == 'active' %}<i class="bi bi-stop-fill"></i> 结束竞赛
-                            {% else %}<i class="bi bi-arrow-repeat"></i> 重新打开{% endif %}
+                            {% if comp.status == 'draft' %}<i class="bi bi-play-fill"></i> 开始
+                            {% elif comp.status == 'active' %}<i class="bi bi-stop-fill"></i> 结束
+                            {% else %}<i class="bi bi-arrow-repeat"></i> 重开{% endif %}
                         </button>
                     </form>
-                    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editCompModal{{ comp.id }}">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <form method="POST" action="{{ url_for('admin.delete_competition', comp_id=comp.id) }}"
-                          onsubmit="return confirm('确定删除此竞赛及所有关联数据？')">
+                    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editCompModal{{ comp.id }}"><i class="bi bi-pencil"></i></button>
+                    <form method="POST" action="{{ url_for('admin.delete_competition', comp_id=comp.id) }}" onsubmit="return confirm('确定删除此竞赛及所有关联数据？')">
                         <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
                     </form>
                 </div>
@@ -59,13 +56,13 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <form method="POST" action="{{ url_for('admin.edit_competition', comp_id=comp.id) }}">
-                    <div class="modal-header"><h5 class="modal-title">编辑: {{ comp.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-header"><h5 class="modal-title">编辑：{{ comp.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                     <div class="modal-body">
                         <div class="mb-3"><label class="form-label">名称</label><input type="text" class="form-control" name="name" value="{{ comp.name }}" required></div>
                         <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2">{{ comp.description or '' }}</textarea></div>
                         <div class="row mb-3">
-                            <div class="col-6"><label class="form-label">开始</label><input type="datetime-local" class="form-control" name="start_time" value="{{ comp.start_time.strftime('%Y-%m-%dT%H:%M') if comp.start_time else '' }}"></div>
-                            <div class="col-6"><label class="form-label">结束</label><input type="datetime-local" class="form-control" name="end_time" value="{{ comp.end_time.strftime('%Y-%m-%dT%H:%M') if comp.end_time else '' }}"></div>
+                            <div class="col-6"><label class="form-label">开始时间</label><input type="datetime-local" class="form-control" name="start_time" value="{{ comp.start_time.strftime('%Y-%m-%dT%H:%M') if comp.start_time else '' }}"></div>
+                            <div class="col-6"><label class="form-label">结束时间</label><input type="datetime-local" class="form-control" name="end_time" value="{{ comp.end_time.strftime('%Y-%m-%dT%H:%M') if comp.end_time else '' }}"></div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-6"><label class="form-label">CPU (核)</label><input type="number" step="0.1" class="form-control" name="cpu_limit" value="{{ comp.cpu_limit }}"></div>
@@ -83,9 +80,9 @@
     {% endfor %}
 </div>
 {% else %}
-<div class="text-center py-5 text-muted">
-    <i class="bi bi-inbox" style="font-size:3rem;"></i>
-    <p class="mt-3">暂无竞赛，点击右上角创建第一个竞赛</p>
+<div class="empty-state">
+    <div class="empty-icon"><i class="bi bi-inbox"></i></div>
+    <p>暂无竞赛，点击右上角创建第一个竞赛</p>
 </div>
 {% endif %}
 
@@ -96,14 +93,14 @@
             <form method="POST" action="{{ url_for('admin.create_competition') }}">
                 <div class="modal-header"><h5 class="modal-title">创建新竞赛</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">竞赛名称 *</label><input type="text" class="form-control" name="name" required placeholder="例: 云计算技能大赛"></div>
+                    <div class="mb-3"><label class="form-label">竞赛名称 *</label><input type="text" class="form-control" name="name" required placeholder="例：云计算技能大赛"></div>
                     <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2" placeholder="竞赛规则和说明"></textarea></div>
                     <div class="row mb-3">
                         <div class="col-6"><label class="form-label">开始时间</label><input type="datetime-local" class="form-control" name="start_time"></div>
                         <div class="col-6"><label class="form-label">结束时间</label><input type="datetime-local" class="form-control" name="end_time"></div>
                     </div>
                     <div class="row mb-3">
-                        <div class="col-6"><label class="form-label">CPU限制(核)</label><input type="number" step="0.1" class="form-control" name="cpu_limit" value="0.5"></div>
+                        <div class="col-6"><label class="form-label">CPU 限制 (核)</label><input type="number" step="0.1" class="form-control" name="cpu_limit" value="0.5"></div>
                         <div class="col-6"><label class="form-label">内存限制</label><input type="text" class="form-control" name="mem_limit" value="512m"></div>
                     </div>
                 </div>

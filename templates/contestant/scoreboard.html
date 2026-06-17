@@ -2,7 +2,9 @@
 {% block title %}排行榜{% endblock %}
 
 {% block content %}
-<h2 class="mb-4"><i class="bi bi-trophy-fill text-warning"></i> 排行榜</h2>
+<div class="page-header">
+    <h4><i class="bi bi-trophy-fill text-warning"></i> 排行榜</h4>
+</div>
 
 {% if competitions %}
 <div class="mb-4">
@@ -18,49 +20,43 @@
 {% endif %}
 
 {% if current_comp and rankings %}
-<div class="table-responsive">
-    <table class="table table-hover scoreboard-table">
-        <thead>
-            <tr>
-                <th width="80">排名</th>
-                <th>队伍</th>
-                <th>选手</th>
-                <th width="120" class="text-center">通过题数</th>
-                <th width="120" class="text-center">总分</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rankings %}
-            <tr class="{{ 'rank-1' if row.rank==1 else 'rank-2' if row.rank==2 else 'rank-3' if row.rank==3 else '' }}">
-                <td class="text-center">
-                    {% if row.rank == 1 %}
-                    <span style="font-size:1.5rem;">&#x1F947;</span>
-                    {% elif row.rank == 2 %}
-                    <span style="font-size:1.5rem;">&#x1F948;</span>
-                    {% elif row.rank == 3 %}
-                    <span style="font-size:1.5rem;">&#x1F949;</span>
-                    {% else %}
-                    <span class="fw-bold">{{ row.rank }}</span>
-                    {% endif %}
-                </td>
-                <td class="fw-bold">{{ row.team_name }}</td>
-                <td>{{ row.username }}</td>
-                <td class="text-center">{{ row.solved_count }}</td>
-                <td class="text-center fw-bold fs-5">{{ row.total_score }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table scoreboard-table mb-0">
+            <thead>
+                <tr>
+                    <th width="80">排名</th>
+                    <th>队伍</th>
+                    <th>选手</th>
+                    <th width="120" class="text-center">通过题数</th>
+                    <th width="120" class="text-center">总分</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rankings %}
+                <tr class="{{ 'rank-gold' if row.rank==1 else 'rank-silver' if row.rank==2 else 'rank-bronze' if row.rank==3 else '' }}">
+                    <td class="text-center">
+                        {% if row.rank == 1 %}<span class="rank-medal">&#x1F947;</span>
+                        {% elif row.rank == 2 %}<span class="rank-medal">&#x1F948;</span>
+                        {% elif row.rank == 3 %}<span class="rank-medal">&#x1F949;</span>
+                        {% else %}<span class="fw-bold">{{ row.rank }}</span>{% endif %}
+                    </td>
+                    <td class="fw-bold">{{ row.team_name }}</td>
+                    <td>{{ row.username }}</td>
+                    <td class="text-center">{{ row.solved_count }}</td>
+                    <td class="text-center fw-bold fs-5">{{ row.total_score }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% elif current_comp %}
-<div class="card p-5 text-center text-muted">
-    <i class="bi bi-people" style="font-size: 3rem;"></i>
-    <p class="mt-3">暂无排名数据</p>
-</div>
+<div class="empty-state"><p>暂无排名数据</p></div>
 {% else %}
-<div class="card p-5 text-center text-muted">
-    <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
-    <p class="mt-3">暂无活跃竞赛</p>
+<div class="empty-state">
+    <div class="empty-icon"><i class="bi bi-calendar-x"></i></div>
+    <p>暂无活跃竞赛</p>
 </div>
 {% endif %}
 {% endblock %}

@@ -2,9 +2,9 @@
 {% block title %}系统日志{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-journal-text"></i> 系统日志</h2>
-    <div class="d-flex gap-2">
+<div class="page-header">
+    <h4><i class="bi bi-journal-text"></i> 系统日志</h4>
+    <div class="d-flex align-items-center gap-2">
         <select id="levelFilter" class="form-select" style="width:auto;">
             <option value="">全部级别</option>
             <option value="INFO">INFO</option>
@@ -12,25 +12,23 @@
             <option value="ERROR">ERROR</option>
             <option value="DEBUG">DEBUG</option>
         </select>
-        <div class="form-check form-switch d-flex align-items-center ms-2">
+        <div class="form-check form-switch d-flex align-items-center ms-1">
             <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
-            <label class="form-check-label" for="autoRefresh">自动刷新</label>
+            <label class="form-check-label small" for="autoRefresh">自动刷新</label>
         </div>
-        <button class="btn btn-outline-secondary btn-sm" onclick="fetchLogs()">
-            <i class="bi bi-arrow-clockwise"></i> 刷新
+        <button class="btn btn-outline-primary btn-sm" onclick="fetchLogs()">
+            <i class="bi bi-arrow-clockwise"></i>
         </button>
     </div>
 </div>
 
 <div class="card">
-    <div class="card-body p-0">
-        <div id="logContainer" class="deploy-log" style="display:block; max-height:70vh; overflow-y:auto;">
-            <div class="text-center text-muted py-5">加载中...</div>
-        </div>
+    <div id="logContainer" class="deploy-log" style="display:block;max-height:70vh;overflow-y:auto;border-radius:var(--radius);">
+        <div class="text-center py-5 text-muted">加载中...</div>
     </div>
     <div class="card-footer d-flex justify-content-between small text-muted">
         <span id="logCount">0 条日志</span>
-        <span>最近 200 条 | 每 3 秒自动刷新</span>
+        <span>最近 200 条 · 每 3 秒刷新</span>
     </div>
 </div>
 {% endblock %}
@@ -47,38 +45,26 @@ function fetchLogs() {
     const level = levelFilter.value;
     fetch(`/admin/logs/data?limit=200&level=${encodeURIComponent(level)}`)
         .then(r => r.json())
-        .then(data => {
-            renderLogs(data.logs);
-        })
-        .catch(e => {
-            logContainer.innerHTML = `<div class="text-center text-danger py-5">加载失败: ${e.message}</div>`;
-        });
+        .then(data => renderLogs(data.logs))
+        .catch(e => { logContainer.innerHTML = `<div class="text-center text-danger py-5">加载失败: ${e.message}</div>`; });
 }
 
 function renderLogs(logs) {
     if (!logs.length) {
-        logContainer.innerHTML = '<div class="text-center text-muted py-5">暂无日志</div>';
+        logContainer.innerHTML = '<div class="text-center py-5 text-muted">暂无日志</div>';
         logCountEl.textContent = '0 条日志';
         return;
     }
-
     let html = '';
     logs.forEach(log => {
-        const levelCls = {
-            'ERROR': 'error',
-            'WARNING': 'warning',
-            'CRITICAL': 'error',
-            'DEBUG': 'info'
-        }[log.level] || 'info';
-
-        html += `<div class="${levelCls}" style="line-height:1.6;">
-            <span style="color:#888;">[${log.time}]</span>
-            <span style="color:${log.level==='ERROR'?'#f44':log.level==='WARNING'?'#fa0':'#0af'};margin-left:8px;">${log.level.padEnd(7)}</span>
-            <span style="color:#aaa;margin-left:8px;">${log.name}</span>
-            <span style="margin-left:8px;">${escapeHtml(log.msg)}</span>
+        const lvl = log.level;
+        html += `<div class="${lvl==='ERROR'?'error':lvl==='WARNING'?'warning':'info'}" style="line-height:1.6;">
+            <span style="color:#64748B;">[${log.time}]</span>
+            <span style="color:${lvl==='ERROR'?'#F87171':lvl==='WARNING'?'#FBBF24':'#60A5FA'};margin-left:8px;">${lvl.padEnd(7)}</span>
+            <span style="color:#94A3B8;margin-left:8px;">${log.name}</span>
+            <span style="margin-left:8px;color:#CBD5E1;">${escapeHtml(log.msg)}</span>
         </div>`;
     });
-
     logContainer.innerHTML = html;
     logContainer.scrollTop = logContainer.scrollHeight;
     logCountEl.textContent = `${logs.length} 条日志`;
@@ -101,7 +87,6 @@ function toggleAutoRefresh() {
 levelFilter.addEventListener('change', fetchLogs);
 autoRefreshEl.addEventListener('change', toggleAutoRefresh);
 
-// Initial load
 fetchLogs();
 toggleAutoRefresh();
 </script>

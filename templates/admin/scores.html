@@ -2,56 +2,57 @@
 {% block title %}{{ competition.name }} - 成绩管理{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-    <a href="{{ url_for('admin.competitions') }}" class="text-decoration-none">&larr; 返回竞赛列表</a>
-    <h2 class="mt-1"><i class="bi bi-bar-chart"></i> {{ competition.name }} - 成绩与排名</h2>
+<div class="breadcrumb-bar">
+    <a href="{{ url_for('admin.competitions') }}">竞赛管理</a>
+    <span>/</span>
+    <a href="{{ url_for('admin.competition_detail', comp_id=competition.id) }}">{{ competition.name }}</a>
+    <span>/</span>
+    <span>成绩管理</span>
 </div>
 
-<div class="table-responsive">
-    <table class="table table-hover scoreboard-table">
-        <thead>
-            <tr>
-                <th>排名</th>
-                <th>队伍</th>
-                <th>选手</th>
-                {% for chal in challenges %}
-                <th class="text-center">{{ chal.title }}<br><small class="fw-normal">{{ chal.points }}分</small></th>
-                {% endfor %}
-                <th class="text-center">总分</th>
-                <th class="text-center">通过数</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rankings %}
-            <tr class="{{ 'rank-1' if loop.index==1 else 'rank-2' if loop.index==2 else 'rank-3' if loop.index==3 else '' }}">
-                <td class="fw-bold">{{ loop.index }}</td>
-                <td>{{ row.team_name or '-' }}</td>
-                <td>{{ row.username }}</td>
-                {% for chal in challenges %}
-                <td class="text-center">
-                    {% set ns = namespace(found=false) %}
-                    {% for (uid, cid), s in score_lookup.items() %}
-                        {% if uid == row.id and cid == chal.id and s.passed %}
-                            <span class="badge bg-success"><i class="bi bi-check-lg"></i> {{ s.score }}</span>
-                            {% set ns.found = true %}
-                        {% endif %}
-                    {% endfor %}
-                    {% if not ns.found %}
-                    <span class="text-muted">-</span>
-                    {% endif %}
-                </td>
-                {% endfor %}
-                <td class="text-center fw-bold">{{ row.total_score }}</td>
-                <td class="text-center">{{ row.solved_count }}</td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="{{ 4 + challenges|length }}" class="text-center text-muted py-5">
-                    暂无数据
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="page-header">
+    <h4><i class="bi bi-bar-chart"></i> 成绩与排名</h4>
+    <a href="{{ url_for('admin.competition_detail', comp_id=competition.id) }}" class="btn btn-outline-primary btn-sm">&larr; 返回</a>
 </div>
+
+{% if rankings and challenges %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table scoreboard-table mb-0">
+            <thead>
+                <tr>
+                    <th>#</th><th>队伍</th><th>选手</th>
+                    {% for chal in challenges %}<th class="text-center">{{ chal.title }}<br><small class="fw-normal">{{ chal.points }}分</small></th>{% endfor %}
+                    <th class="text-center">总分</th><th class="text-center">通过</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rankings %}
+                <tr class="{{ 'rank-gold' if loop.index==1 else 'rank-silver' if loop.index==2 else 'rank-bronze' if loop.index==3 else '' }}">
+                    <td class="fw-bold">{{ loop.index }}</td>
+                    <td>{{ row.team_name or '-' }}</td>
+                    <td>{{ row.username }}</td>
+                    {% for chal in challenges %}
+                    <td class="text-center">
+                        {% set ns = namespace(found=false) %}
+                        {% for (uid, cid), s in score_lookup.items() %}
+                            {% if uid == row.id and cid == chal.id and s.passed %}
+                                <span class="badge bg-success"><i class="bi bi-check-lg"></i> {{ s.score }}</span>
+                                {% set ns.found = true %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if not ns.found %}<span class="text-muted">-</span>{% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-center fw-bold">{{ row.total_score }}</td>
+                    <td class="text-center">{{ row.solved_count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state"><p>暂无成绩数据</p></div>
+{% endif %}
 {% endblock %}

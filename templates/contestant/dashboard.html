@@ -2,21 +2,23 @@
 {% block title %}选手控制台{% endblock %}
 
 {% block content %}
-<h2 class="mb-4"><i class="bi bi-pc-display"></i> 我的竞赛环境</h2>
+<div class="page-header">
+    <h4><i class="bi bi-pc-display"></i> 我的竞赛环境</h4>
+</div>
 
 {% if comps %}
 {% for comp_data in comps %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <div>
-            <h5 class="mb-0">{{ comp_data.competition.name }}</h5>
-            <small class="text-muted">
+            <strong>{{ comp_data.competition.name }}</strong>
+            <div class="small text-muted mt-1">
                 {{ comp_data.competition.start_time.strftime('%m-%d %H:%M') if comp_data.competition.start_time else '' }}
                 ~ {{ comp_data.competition.end_time.strftime('%m-%d %H:%M') if comp_data.competition.end_time else '' }}
-            </small>
+            </div>
         </div>
         <div class="text-end">
-            <div class="fw-bold text-primary fs-5">{{ comp_data.total_score }} / {{ comp_data.total_possible }}</div>
+            <div class="fw-bold fs-5" style="color:var(--c-brand);">{{ comp_data.total_score }} / {{ comp_data.total_possible }}</div>
             <small class="text-muted">通过 {{ comp_data.passed_count }}/{{ comp_data.total_challenges }} 题</small>
         </div>
     </div>
@@ -26,22 +28,19 @@
             {% for env in comp_data.environments %}
             <div class="col-md-4">
                 <div class="card border h-100">
-                    <div class="card-body">
-                        <h6 class="card-title">{{ env.challenge_title }}</h6>
-                        <div class="small mb-2">
-                            <span class="status-badge badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">
+                    <div class="card-body d-flex flex-column">
+                        <h6 class="card-title mb-2">{{ env.challenge_title }}</h6>
+                        <div class="mb-2">
+                            <span class="badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">
                                 {{ {'running':'运行中','stopped':'已停止','pending':'等待中','error':'错误','removed':'已删除'}.get(env.status, env.status) }}
                             </span>
-                            {% if env.points > 0 %}
-                            <span class="badge bg-info ms-1">{{ env.points }}分</span>
-                            {% endif %}
+                            {% if env.points > 0 %}<span class="badge bg-info ms-1">{{ env.points }}分</span>{% endif %}
                         </div>
                         <div class="small text-muted mb-3">
-                            <div>端口: {{ env.host_port or '未分配' }}</div>
-                            <div>容器: <code class="small">{{ env.container_name or '-' }}</code></div>
+                            <div>端口：{{ env.host_port or '未分配' }}</div>
+                            <div>容器：<code class="code-tag">{{ env.container_name or '-' }}</code></div>
                         </div>
-                        <a href="{{ url_for('contestant.environment_detail', env_id=env.id) }}"
-                           class="btn btn-primary btn-sm w-100">
+                        <a href="{{ url_for('contestant.environment_detail', env_id=env.id) }}" class="btn btn-primary btn-sm w-100 mt-auto">
                             <i class="bi bi-terminal"></i> 进入环境
                         </a>
                     </div>
@@ -56,9 +55,9 @@
 </div>
 {% endfor %}
 {% else %}
-<div class="card p-5 text-center text-muted">
-    <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
-    <p class="mt-3">当前没有进行中的竞赛</p>
+<div class="empty-state">
+    <div class="empty-icon"><i class="bi bi-calendar-x"></i></div>
+    <p>当前没有进行中的竞赛</p>
 </div>
 {% endif %}
 {% endblock %}
