@@ -84,7 +84,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
                 expose_ports = [80]
 
             if not challenge.image_tag:
-                logger.warning(f"Deploy skip: challenge '{challenge.title}' has no image_tag (image not built)")
+                logger.warning(f"部署跳过：题目「{challenge.title}」镜像未构建 | Deploy skip: no image_tag for '{challenge.title}'")
                 results["details"].append({
                     "user": user.username,
                     "challenge": challenge.title,
@@ -157,10 +157,10 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
     results["total_envs"] = total
 
     logger.info(
-        f"Deploy metrics [{competition.name}]: "
-        f"total={total} success={results['success']} failed={results['failed']} "
-        f"elapsed={elapsed}s "
-        f"avg_per_container={round(elapsed / total, 2) if total > 0 else 0}s"
+        f"部署统计 [{competition.name}]：总数={total} 成功={results['success']} 失败={results['failed']} "
+        f"耗时={elapsed}s 平均={round(elapsed / total, 2) if total > 0 else 0}s/个"
+        f" | Deploy metrics: total={total} success={results['success']} failed={results['failed']} "
+        f"elapsed={elapsed}s avg={round(elapsed / total, 2) if total > 0 else 0}s"
     )
 
     if socketio:

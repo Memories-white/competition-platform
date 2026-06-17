@@ -2,11 +2,16 @@ import os
 import logging
 from collections import deque
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from flask import Flask, redirect, url_for, session, request, jsonify, render_template, flash
 from flask_socketio import SocketIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
 from models import db
+
+# ── 日志目录 ──
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,11 +19,44 @@ logger = logging.getLogger(__name__)
 socketio = SocketIO()
 scheduler = BackgroundScheduler()
 
-# 内存日志存储：双端队列 (时间戳, 级别, 模块, 消息)
+# ── 中英双语格式化器 ──
+# 日志消息格式：中文 | English
+# 中文日志文件取 "|" 左侧，英文日志文件取 "|" 右侧
+# 无 "|" 的消息两个文件使用相同内容
+
+class ZhFormatter(logging.Formatter):
+    """中文日志格式化器 — 提取消息中 '|' 左侧的中文部分"""
+    def format(self, record):
+        if hasattr(record, 'msg') and isinstance(record.msg, str) and ' | ' in record.msg:
+            record.msg = record.msg.split(' | ', 1)[0]
+        return super().format(record)
+
+class EnFormatter(logging.Formatter):
+    """英文日志格式化器 — 提取消息中 '|' 右侧的英文部分"""
+    def format(self, record):
+        if hasattr(record, 'msg') and isinstance(record.msg, str) and ' | ' in record.msg:
+            parts = record.msg.split(' | ', 1)
+            record.msg = parts[1] if len(parts) > 1 else parts[0]
+        return super().format(record)
+
+# ── 文件日志处理器（自动轮转，单文件最大 5MB，保留 5 个备份）─
+_zh_handler = RotatingFileHandler(
+    os.path.join(LOG_DIR, "app_zh.log"), maxBytes=5*1024*1024, backupCount=5, encoding="utf-8"
+)
+_zh_handler.setFormatter(ZhFormatter("[%(asctime)s] %(levelname)-5s %(name)-20s | %(message)s"))
+_zh_handler.setLevel(logging.INFO)
+
+_en_handler = RotatingFileHandler(
+    os.path.join(LOG_DIR, "app_en.log"), maxBytes=5*1024*1024, backupCount=5, encoding="utf-8"
+)
+_en_handler.setFormatter(EnFormatter("[%(asctime)s] %(levelname)-5s %(name)-20s | %(message)s"))
+_en_handler.setLevel(logging.INFO)
+
+# ── 内存日志存储（Web 界面查看）─
 _log_buffer = deque(maxlen=500)
 
-
 class MemoryLogHandler(logging.Handler):
+    """将日志存入内存队列，供 Web 界面 /admin/logs 读取"""
     def emit(self, record):
         _log_buffer.append({
             "time": datetime.fromtimestamp(record.created).strftime("%H:%M:%S"),
@@ -27,17 +65,23 @@ class MemoryLogHandler(logging.Handler):
             "msg": self.format(record),
         })
 
-
 _mem_handler = MemoryLogHandler()
-_mem_handler.setFormatter(logging.Formatter("%(message)s"))
+_mem_handler.setFormatter(ZhFormatter("%(message)s"))
 _mem_handler.setLevel(logging.INFO)
-logging.getLogger().addHandler(_mem_handler)
 
-# 同时捕获 werkzeug 访问日志（禁止传播避免重复）
+# ── 将 handler 挂到根 logger ──
+_root = logging.getLogger()
+_root.addHandler(_zh_handler)
+_root.addHandler(_en_handler)
+_root.addHandler(_mem_handler)
+
+# ── 降噪：werkzeug 和 apscheduler 只显示警告及以上 ──
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 logging.getLogger("werkzeug").addHandler(_mem_handler)
-logging.getLogger("werkzeug").propagate = False
+logging.getLogger("werkzeug").propagate = True
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").addHandler(_mem_handler)
-logging.getLogger("apscheduler").propagate = False
+logging.getLogger("apscheduler").propagate = True
 
 
 def get_logs(limit=200, level=None):
@@ -151,46 +195,46 @@ def _migrate_database(app):
         if "challenge_type" not in cols:
             conn.execute(text("ALTER TABLE challenges ADD COLUMN challenge_type VARCHAR(20) DEFAULT 'docker'"))
             conn.commit()
-            logger.info("Migration: added challenges.challenge_type")
+            logger.info("数据库迁移：添加题目类型字段 | Migration: added challenges.challenge_type")
 
         # 答卷答案字段
         score_cols = [c["name"] for c in inspector.get_columns("scores")]
         if "answers" not in score_cols:
             conn.execute(text("ALTER TABLE scores ADD COLUMN answers TEXT DEFAULT ''"))
             conn.commit()
-            logger.info("Migration: added scores.answers")
+            logger.info("数据库迁移：添加答卷答案字段 | Migration: added scores.answers")
 
         # 题目登录信息字段
         chal_cols = [c["name"] for c in inspector.get_columns("challenges")]
         if "login_info" not in chal_cols:
             conn.execute(text("ALTER TABLE challenges ADD COLUMN login_info VARCHAR(200) DEFAULT ''"))
             conn.commit()
-            logger.info("Migration: added challenges.login_info")
+            logger.info("数据库迁移：添加题目登录信息字段 | Migration: added challenges.login_info")
 
         # 自动部署标记和部署时间字段
         comp_cols = [c["name"] for c in inspector.get_columns("competitions")]
         if "auto_deployed" not in comp_cols:
             conn.execute(text("ALTER TABLE competitions ADD COLUMN auto_deployed BOOLEAN DEFAULT 0"))
             conn.commit()
-            logger.info("Migration: added competitions.auto_deployed")
+            logger.info("数据库迁移：添加自动部署标记字段 | Migration: added competitions.auto_deployed")
         if "deployed_at" not in comp_cols:
             conn.execute(text("ALTER TABLE competitions ADD COLUMN deployed_at DATETIME"))
             conn.commit()
-            logger.info("Migration: added competitions.deployed_at")
+            logger.info("数据库迁移：添加部署时间字段 | Migration: added competitions.deployed_at")
 
         # 环境 Web 端口字段
         env_cols = [c["name"] for c in inspector.get_columns("environments")]
         if "web_port" not in env_cols:
             conn.execute(text("ALTER TABLE environments ADD COLUMN web_port INTEGER DEFAULT 0"))
             conn.commit()
-            logger.info("Migration: added environments.web_port")
+            logger.info("数据库迁移：添加 Web 端口字段 | Migration: added environments.web_port")
 
         # 试卷题目表
         if "exam_questions" not in inspector.get_table_names():
             from models.models import ExamQuestion
             ExamQuestion.__table__.create(db.engine, checkfirst=True)
             conn.commit()
-            logger.info("Migration: created exam_questions table")
+            logger.info("数据库迁移：创建试卷题目表 | Migration: created exam_questions table")
 
         conn.close()
 
@@ -205,13 +249,13 @@ def _sync_orphan_containers(app):
         from docker_engine.manager import get_client
         client = get_client()
     except Exception:
-        logger.info("Sync containers: Docker unavailable, skipping")
+        logger.info("容器同步：Docker 不可用，跳过 | Sync containers: Docker unavailable, skipping")
         return
 
     try:
         containers = client.containers.list(all=True, sparse=True)
     except Exception as e:
-        logger.warning(f"Sync containers: failed to list containers: {e}")
+        logger.warning(f"容器同步：无法列出容器 - {e} | Sync containers: failed to list containers: {e}")
         return
 
     pattern = re.compile(r"^comp-(\d+)-u(\d+)-c(\d+)$")
@@ -241,7 +285,7 @@ def _sync_orphan_containers(app):
         user = db.session.get(User, user_id)
         chal = db.session.get(Challenge, challenge_id)
         if not all([comp, user, chal]):
-            logger.warning(f"Sync containers: skipping orphan {name} (missing comp/user/chal)")
+            logger.warning(f"容器同步：跳过孤儿容器 {name}（缺少关联记录） | Sync: skipping orphan {name} (missing comp/user/chal)")
             continue
 
         # 获取容器实际状态和端口映射
@@ -277,13 +321,13 @@ def _sync_orphan_containers(app):
         )
         db.session.add(env)
         synced += 1
-        logger.info(f"Sync containers: recovered {name} (status={status}, port={host_port})")
+        logger.info(f"容器同步：恢复 {name}（状态={status}, 端口={host_port}） | Sync: recovered {name} (status={status}, port={host_port})")
 
     if synced > 0:
         db.session.commit()
-        logger.info(f"Sync containers: {synced} orphan containers recovered to database")
+        logger.info(f"容器同步：{synced} 个孤儿容器已恢复到数据库 | Sync: {synced} orphan containers recovered")
     else:
-        logger.info("Sync containers: no orphans found")
+        logger.info("容器同步：未发现孤儿容器 | Sync: no orphans found")
 
 
 def _seed_admin(app):
@@ -316,9 +360,9 @@ def _start_scheduler(app):
             for comp in active_comps:
                 try:
                     result = judge_all_for_competition(comp.id)
-                    logger.info(f"Auto-judge [{comp.name}]: judged={result['judged']}, passed={result['passed']}")
+                    logger.info(f"自动判题 [{comp.name}]：已判 {result['judged']} 题，通过 {result['passed']} 题 | Auto-judge: judged={result['judged']}, passed={result['passed']}")
                 except Exception as e:
-                    logger.error(f"Auto-judge error [{comp.name}]: {e}")
+                    logger.error(f"自动判题异常 [{comp.name}]：{e} | Auto-judge error: {e}")
 
     def auto_build_job():
         """为已激活但尚未部署的竞赛自动部署环境。"""
@@ -327,13 +371,13 @@ def _start_scheduler(app):
             active_comps = Competition.query.filter_by(status="active", auto_deployed=False).all()
             for comp in active_comps:
                 try:
-                    logger.info(f"Auto-build [{comp.name}]: starting automatic deployment...")
+                    logger.info(f"自动部署 [{comp.name}]：开始自动部署... | Auto-build: starting deployment...")
                     result = deploy_competition_environments(comp.id, socketio=socketio)
                     succ = result.get('success', 0)
                     fail = result.get('failed', 0)
                     # 若返回 error 字段说明部署前置条件不满足（无选手/无题目等）
                     if result.get("error"):
-                        logger.info(f"Auto-build [{comp.name}]: skipped ({result['error']})")
+                        logger.info(f"自动部署 [{comp.name}]：跳过（{result['error']}） | Auto-build: skipped ({result['error']})")
                         socketio.emit("auto_deploy_done", {
                             "competition": comp.name,
                             "success": 0,
@@ -343,7 +387,7 @@ def _start_scheduler(app):
                         # 不设 auto_deployed，等条件满足后重试
                     elif fail > 0:
                         # 部分失败（如镜像未构建），标记未完成等下次重试
-                        logger.info(f"Auto-build [{comp.name}]: success={succ}, failed={fail} (will retry)")
+                        logger.info(f"自动部署 [{comp.name}]：成功 {succ}，失败 {fail}（将重试） | Auto-build: success={succ}, failed={fail} (will retry)")
                         socketio.emit("auto_deploy_done", {
                             "competition": comp.name,
                             "success": succ,
@@ -353,7 +397,7 @@ def _start_scheduler(app):
                         # 全部成功，标记部署完成
                         comp.auto_deployed = True
                         comp.deployed_at = datetime.now(timezone.utc)
-                        logger.info(f"Auto-build [{comp.name}]: all {succ} environments deployed successfully")
+                        logger.info(f"自动部署 [{comp.name}]：全部 {succ} 个环境部署成功 | Auto-build: all {succ} environments deployed")
                         socketio.emit("auto_deploy_done", {
                             "competition": comp.name,
                             "success": succ,
@@ -361,7 +405,7 @@ def _start_scheduler(app):
                         })
                     db.session.commit()
                 except Exception as e:
-                    logger.error(f"Auto-build error [{comp.name}]: {e}")
+                    logger.error(f"自动部署异常 [{comp.name}]：{e} | Auto-build error: {e}")
                     socketio.emit("auto_deploy_done", {
                         "competition": comp.name,
                         "success": 0,
@@ -383,19 +427,19 @@ def _start_scheduler(app):
             if not challenge:
                 return
             try:
-                logger.info(f"Image build: starting for challenge {challenge.id} '{challenge.title}'")
+                logger.info(f"镜像构建：开始构建题目 {challenge.id}「{challenge.title}」 | Image build: starting challenge {challenge.id}")
                 # 用独立线程执行构建，设置 310 秒超时（比 BUILD_TIMEOUT 多 10 秒容错）
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(build_challenge_image, challenge.id, challenge.dockerfile_content)
                     try:
                         result = future.result(timeout=310)
                     except FuturesTimeout:
-                        logger.error(f"Image build: timeout for challenge {challenge.id}")
+                        logger.error(f"镜像构建：题目 {challenge.id} 构建超时 | Image build: timeout for challenge {challenge.id}")
                         result = {"success": False, "image_tag": "", "error": "构建超时（超过5分钟）"}
                 if result["success"]:
                     challenge.image_tag = result["image_tag"]
                     db.session.commit()
-                    logger.info(f"Image build: success for challenge {challenge.id}, tag={result['image_tag']}")
+                    logger.info(f"镜像构建：题目 {challenge.id} 构建成功，标签={result['image_tag']} | Image build: success, tag={result['image_tag']}")
                     socketio.emit("image_build_done", {
                         "challenge_id": challenge.id,
                         "title": challenge.title,
@@ -404,7 +448,7 @@ def _start_scheduler(app):
                         "error": "",
                     })
                 else:
-                    logger.error(f"Image build: failed for challenge {challenge.id}: {result['error']}")
+                    logger.error(f"镜像构建：题目 {challenge.id} 构建失败 - {result['error']} | Image build: failed - {result['error']}")
                     socketio.emit("image_build_done", {
                         "challenge_id": challenge.id,
                         "title": challenge.title,
@@ -413,7 +457,7 @@ def _start_scheduler(app):
                         "error": result["error"],
                     })
             except Exception as e:
-                logger.error(f"Image build: exception for challenge {challenge.id}: {e}")
+                logger.error(f"镜像构建：题目 {challenge.id} 异常 - {e} | Image build: exception - {e}")
                 try:
                     socketio.emit("image_build_done", {
                         "challenge_id": challenge.id,
@@ -437,24 +481,24 @@ def _start_scheduler(app):
                 if active_envs == 0:
                     continue
 
-                logger.info(f"Auto-cleanup [{comp.name}]: judging remaining environments...")
+                logger.info(f"自动清理 [{comp.name}]：判题剩余环境中... | Auto-cleanup: judging remaining environments")
                 try:
                     judge_result = judge_all_for_competition(comp.id)
-                    logger.info(f"Auto-cleanup [{comp.name}]: judged={judge_result['judged']}, passed={judge_result['passed']}")
+                    logger.info(f"自动清理 [{comp.name}]：已判 {judge_result['judged']} 题，通过 {judge_result['passed']} 题 | Auto-cleanup: judged={judge_result['judged']}")
                 except Exception as e:
-                    logger.error(f"Auto-cleanup judge error [{comp.name}]: {e}")
+                    logger.error(f"自动清理判题异常 [{comp.name}]：{e} | Auto-cleanup judge error: {e}")
 
                 try:
                     stop_result = stop_all_environments(comp.id)
-                    logger.info(f"Auto-cleanup [{comp.name}]: stopped {stop_result['stopped']} containers")
+                    logger.info(f"自动清理 [{comp.name}]：已停止 {stop_result['stopped']} 个容器 | Auto-cleanup: stopped {stop_result['stopped']} containers")
                 except Exception as e:
-                    logger.error(f"Auto-cleanup stop error [{comp.name}]: {e}")
+                    logger.error(f"自动清理停止异常 [{comp.name}]：{e} | Auto-cleanup stop error: {e}")
 
                 try:
                     remove_result = remove_all_environments(comp.id)
-                    logger.info(f"Auto-cleanup [{comp.name}]: removed {remove_result['removed']} containers")
+                    logger.info(f"自动清理 [{comp.name}]：已删除 {remove_result['removed']} 个容器 | Auto-cleanup: removed {remove_result['removed']} containers")
                 except Exception as e:
-                    logger.error(f"Auto-cleanup remove error [{comp.name}]: {e}")
+                    logger.error(f"自动清理删除异常 [{comp.name}]：{e} | Auto-cleanup remove error: {e}")
 
     scheduler.add_job(
         auto_build_job,
@@ -486,10 +530,10 @@ def _start_scheduler(app):
         replace_existing=True,
     )
     scheduler.start()
-    logger.info(f"Auto-build scheduler started (interval: {app.config.get('AUTO_BUILD_INTERVAL_SECONDS', 15)}s)")
-    logger.info(f"Auto-image-build scheduler started (interval: {app.config.get('IMAGE_BUILD_INTERVAL_SECONDS', 30)}s)")
-    logger.info(f"Auto-judge scheduler started (interval: {app.config.get('JUDGE_INTERVAL_SECONDS', 30)}s)")
-    logger.info(f"Auto-cleanup scheduler started (interval: {app.config.get('CLEANUP_INTERVAL_SECONDS', 120)}s)")
+    logger.info(f"调度器：自动部署已启动（间隔 {app.config.get('AUTO_BUILD_INTERVAL_SECONDS', 15)}s） | Auto-build scheduler started")
+    logger.info(f"调度器：镜像构建已启动（间隔 {app.config.get('IMAGE_BUILD_INTERVAL_SECONDS', 30)}s） | Auto-image-build scheduler started")
+    logger.info(f"调度器：自动判题已启动（间隔 {app.config.get('JUDGE_INTERVAL_SECONDS', 30)}s） | Auto-judge scheduler started")
+    logger.info(f"调度器：自动清理已启动（间隔 {app.config.get('CLEANUP_INTERVAL_SECONDS', 120)}s） | Auto-cleanup scheduler started")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ def get_client():
             _client.ping()
         except Exception as e:
             _client = None
-            logger.error(f"Failed to connect to Docker: {e}")
+            logger.error(f"Docker 连接失败：{e} | Failed to connect to Docker: {e}")
             raise ConnectionError(f"Docker 服务未启动或无法连接: {e}")
     return _client
 
@@ -34,7 +34,7 @@ def _ensure_network():
             client.networks.create(Config.CONTAINER_NETWORK, driver="bridge")
         _network_created = True
     except Exception as e:
-        logger.warning(f"Failed to ensure network: {e}")
+        logger.warning(f"网络创建失败：{e} | Failed to ensure network: {e}")
 
 
 def get_free_port(start=30000, end=40000, exclude_ports: set = None) -> int:
@@ -68,7 +68,7 @@ def create_container(image_tag: str, container_name: str, cpu_limit: float = 0.5
         try:
             old = client.containers.get(container_name)
             old.remove(force=True)
-            logger.info(f"Removed leftover container: {container_name}")
+            logger.info(f"已清理残留容器：{container_name} | Removed leftover container: {container_name}")
         except docker.errors.NotFound:
             pass
 

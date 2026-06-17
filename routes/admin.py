@@ -88,7 +88,7 @@ def create_competition():
 
         # 从选中的题库预设创建题目
         preset_ids = request.form.getlist("preset_ids")
-        logger.info(f"Create competition '{name}': preset_ids={preset_ids}, os={request.form.get('os_choice')}")
+        logger.info(f"创建竞赛「{name}」：预设={preset_ids}, 系统={request.form.get('os_choice')} | Create competition: preset_ids={preset_ids}")
         if preset_ids:
             created = 0
             for pid in preset_ids:
@@ -346,14 +346,14 @@ def deploy_environments(comp_id):
         get_client()
     except Exception as e:
         docker_ok = False
-        logger.warning(f"Deploy pre-check: Docker not available ({e})")
+        logger.warning(f"部署预检：Docker 不可用（{e}） | Deploy pre-check: Docker not available")
 
     def _deploy():
         try:
             with app.app_context():
                 deploy_competition_environments(comp_id, socketio=socketio)
         except Exception as e:
-            logger.error(f"Deploy error: {e}")
+            logger.error(f"部署失败：{e} | Deploy error: {e}")
             try:
                 socketio.emit("deploy_progress", {
                     "progress": 0, "total": 0, "current": 0,

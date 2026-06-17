@@ -79,7 +79,7 @@ def get_client():
             _client.ping()
         except Exception as e:
             _client = None
-            logger.error(f"Failed to connect to Docker: {e}")
+            logger.error(f"Docker 连接失败：{e} | Failed to connect to Docker: {e}")
             raise ConnectionError(f"Docker 服务未启动或无法连接: {e}")
     return _client
 
@@ -104,7 +104,7 @@ def build_image(challenge_id: int, dockerfile_content: str, max_retries: int = N
                     timeout=BUILD_TIMEOUT,
                 )
                 if attempt > 0:
-                    logger.info(f"Build succeeded on retry {attempt} for challenge {challenge_id}")
+                    logger.info(f"构建重试 {attempt} 次后成功，题目 {challenge_id} | Build succeeded on retry {attempt}")
                 return True, ""
             except docker.errors.BuildError as e:
                 error_msg = ""
@@ -118,7 +118,7 @@ def build_image(challenge_id: int, dockerfile_content: str, max_retries: int = N
                 last_error = _format_error(str(e))
 
             if attempt < retries:
-                logger.warning(f"Build attempt {attempt + 1} failed for challenge {challenge_id}, retrying in {BUILD_RETRY_DELAY}s: {last_error}")
+                logger.warning(f"构建第 {attempt + 1} 次失败，题目 {challenge_id}，{BUILD_RETRY_DELAY}s 后重试 | Build attempt {attempt + 1} failed, retrying in {BUILD_RETRY_DELAY}s")
                 time.sleep(BUILD_RETRY_DELAY)
         return False, last_error
 
@@ -132,7 +132,7 @@ def build_image(challenge_id: int, dockerfile_content: str, max_retries: int = N
     if mirror:
         mirrored = _rewrite_dockerfile_for_mirror(dockerfile_content, mirror)
         if mirrored != dockerfile_content:
-            logger.info(f"Retrying build for challenge {challenge_id} with mirror: {mirror}")
+            logger.info(f"使用镜像 {mirror} 重试构建，题目 {challenge_id} | Retrying build with mirror: {mirror}")
             ok2, err2 = _do_build(mirrored)
             if ok2:
                 return True, image_tag
@@ -161,7 +161,7 @@ def build_image_from_template(template_name: str, challenge_id: int, max_retries
                 timeout=BUILD_TIMEOUT,
             )
             if attempt > 0:
-                logger.info(f"Template build succeeded on retry {attempt} for challenge {challenge_id}")
+                logger.info(f"模板构建重试 {attempt} 次后成功，题目 {challenge_id} | Template build succeeded on retry {attempt}")
             return True, image_tag
         except docker.errors.BuildError as e:
             error_msg = ""
@@ -175,7 +175,7 @@ def build_image_from_template(template_name: str, challenge_id: int, max_retries
             last_error = _format_error(str(e))
 
         if attempt < retries:
-            logger.warning(f"Template build attempt {attempt + 1} failed for {template_name}, retrying in {BUILD_RETRY_DELAY}s: {last_error}")
+            logger.warning(f"模板构建第 {attempt + 1} 次失败，{template_name}，{BUILD_RETRY_DELAY}s 后重试 | Template build attempt {attempt + 1} failed")
             time.sleep(BUILD_RETRY_DELAY)
 
     return False, last_error
