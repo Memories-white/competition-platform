@@ -242,12 +242,22 @@ def _start_scheduler(app):
                     db.session.commit()
                     succ = result.get('success', 0)
                     fail = result.get('failed', 0)
-                    logger.info(f"Auto-build [{comp.name}]: success={succ}, failed={fail}")
-                    socketio.emit("auto_deploy_done", {
-                        "competition": comp.name,
-                        "success": succ,
-                        "failed": fail,
-                    })
+                    # 若返回 error 字段说明部署前置条件不满足（无选手/无题目等）
+                    if result.get("error"):
+                        logger.info(f"Auto-build [{comp.name}]: skipped ({result['error']})")
+                        socketio.emit("auto_deploy_done", {
+                            "competition": comp.name,
+                            "success": 0,
+                            "failed": 0,
+                            "error": result["error"],
+                        })
+                    else:
+                        logger.info(f"Auto-build [{comp.name}]: success={succ}, failed={fail}")
+                        socketio.emit("auto_deploy_done", {
+                            "competition": comp.name,
+                            "success": succ,
+                            "failed": fail,
+                        })
                 except Exception as e:
                     logger.error(f"Auto-build error [{comp.name}]: {e}")
                     socketio.emit("auto_deploy_done", {

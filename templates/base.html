@@ -252,15 +252,15 @@
         var body = document.getElementById("deployToastBody");
         var toastEl = document.getElementById("deployToast");
         if (!body || !toastEl) return;
-        if (data.error) {
-          // 部署出错：红色 Toast，显示错误信息
+        if (data.error || data.success === false) {
+          // 部署出错或跳过（无选手/无题目等）：黄色 Toast，显示原因
           toastEl.className =
-            "toast align-items-center text-bg-danger border-0";
+            "toast align-items-center text-bg-warning border-0";
           body.innerHTML =
             '<i class="bi bi-exclamation-triangle me-2"></i><strong>' +
             data.competition +
-            "</strong> 部署失败: " +
-            data.error;
+            "</strong> 部署未执行: " +
+            (data.error || "无可部署的环境");
         } else {
           // 部署成功：绿色 Toast，显示成功/失败数量
           toastEl.className =
