@@ -135,5 +135,12 @@ def _start_scheduler(app):
 
 
 if __name__ == "__main__":
+    # Prevent double-import: when "python app.py" runs, __name__ is "__main__".
+    # Later, "from app import socketio" inside route modules would trigger a fresh
+    # import of app.py as "app", creating a second uninitialized SocketIO instance.
+    # Alias __main__ as "app" so both import paths resolve to the same module.
+    import sys as _sys
+    _sys.modules["app"] = _sys.modules["__main__"]
+
     app = create_app()
     socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)

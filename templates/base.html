@@ -51,13 +51,15 @@
     </div>
 
     <div class="sidebar-bottom">
-        <i class="bi bi-person-circle"></i> {{ current_user.username }}
-        <span class="ms-2 badge bg-secondary">{{ '管理员' if current_user.role=='admin' else current_user.team_name or '选手' }}</span>
-    </div>
-    <div class="logout-btn">
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary btn-sm w-100">
-            <i class="bi bi-box-arrow-right"></i> 退出
-        </a>
+        <div class="user-info">
+            <i class="bi bi-person-circle"></i> {{ current_user.username }}
+            <span class="ms-2 badge bg-secondary">{{ '管理员' if current_user.role=='admin' else current_user.team_name or '选手' }}</span>
+        </div>
+        <div class="logout-btn">
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary btn-sm w-100">
+                <i class="bi bi-box-arrow-right"></i> 退出
+            </a>
+        </div>
     </div>
 </div>
 {% endif %}
