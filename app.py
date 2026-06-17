@@ -2,7 +2,7 @@ import os
 import logging
 from collections import deque
 from datetime import datetime, timezone
-from flask import Flask, redirect, url_for, session, request, jsonify
+from flask import Flask, redirect, url_for, session, request, jsonify, render_template
 from flask_socketio import SocketIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
