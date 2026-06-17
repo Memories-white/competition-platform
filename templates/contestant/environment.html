@@ -44,27 +44,43 @@
                     <p class="mb-1"><strong>宿主机端口：</strong><code>{{ env.host_port }}</code></p>
                     <p class="mb-0"><strong>容器 ID：</strong><code class="code-tag">{{ env.container_id[:24] if env.container_id else '-' }}...</code></p>
                 </div>
-                <div class="alert alert-info small mb-3">
-                    <i class="bi bi-lightbulb me-1"></i>
-                    <strong>如何操作？</strong><br>
-                    连接到容器：<code>docker exec -it {{ env.container_name }} bash</code><br>
-                    或通过 SSH：<code>ssh root@{{ host_ip }} -p {{ env.host_port }}</code>
+
+                {% if env.host_port and status and status.status == 'running' %}
+                <!-- SSH Connection (Primary) -->
+                <div class="alert alert-primary small mb-3">
+                    <i class="bi bi-terminal-fill me-1"></i>
+                    <strong>SSH 连接</strong>
+                    <span class="text-muted ms-2">（可直接比赛操作）</span><br>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <code class="flex-grow-1" style="font-size:.85rem;" id="sshCmd">ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@{{ host_ip }} -p {{ env.host_port }}</code>
+                        <button class="btn btn-primary btn-sm" onclick="copyCmd()">
+                            <i class="bi bi-clipboard"></i> 复制
+                        </button>
+                    </div>
                     {% if challenge.login_info %}
                     <hr class="my-2">
                     <i class="bi bi-key me-1"></i>
                     <strong>登录信息：</strong><span class="text-success">{{ challenge.login_info }}</span>
                     {% endif %}
                 </div>
-                {% if env.host_port and status and status.status == 'running' %}
-                <div class="alert alert-success small mb-0">
+
+                <!-- Web URL (only for web-service challenges) -->
+                {% if challenge.judge_type == 'port' and challenge.judge_config and ('"port": 80' in challenge.judge_config or '"port": 443' in challenge.judge_config or '"port": 5000' in challenge.judge_config or '"port": 3000' in challenge.judge_config or '"port": 8080' in challenge.judge_config) %}
+                <div class="alert alert-success small mb-3">
                     <i class="bi bi-link-45deg me-1"></i>
-                    <strong>访问链接：</strong>
+                    <strong>Web 访问：</strong>
                     <a href="http://{{ host_ip }}:{{ env.host_port }}" target="_blank" class="fw-bold">
                         http://{{ host_ip }}:{{ env.host_port }}
                     </a>
                     <button class="btn btn-outline-success btn-sm ms-2" onclick="copyUrl('http://{{ host_ip }}:{{ env.host_port }}')">
                         <i class="bi bi-clipboard"></i> 复制
                     </button>
+                </div>
+                {% endif %}
+
+                <!-- docker exec fallback -->
+                <div class="small text-muted">
+                    <i class="bi bi-info-circle me-1"></i> 管理员可通过 <code>docker exec -it {{ env.container_name }} bash</code> 进入容器
                 </div>
                 {% endif %}
             </div>
@@ -134,6 +150,15 @@ function copyUrl(url) {
         alert('链接已复制到剪贴板');
     }).catch(() => {
         prompt('复制以下链接：', url);
+    });
+}
+
+function copyCmd() {
+    const cmd = document.getElementById('sshCmd').textContent;
+    navigator.clipboard.writeText(cmd).then(() => {
+        alert('SSH 命令已复制到剪贴板');
+    }).catch(() => {
+        prompt('复制以下命令：', cmd);
     });
 }
 
