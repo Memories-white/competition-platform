@@ -223,7 +223,7 @@
                         <select class="form-select" id="presetSelector" onchange="applyPreset()">
                             <option value="">— 手动填写 —</option>
                             {% for p in presets %}
-                            <option value="{{ p.id }}" data-title="{{ p.title }}" data-desc="{{ p.description }}">{{ p.title }}（{{ p.category }} / {{ p.difficulty }}）</option>
+                            <option value="{{ p.id }}">{{ p.title }}（{{ p.category }} / {{ p.difficulty }}）</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -638,12 +638,23 @@ if (activeTab) {
     const tab = document.querySelector(`[data-bs-target="${activeTab}"]`);
     if (tab) new bootstrap.Tab(tab).show();
 }
+{% if presets %}
+const PRESET_DATA = {{ presets | tojson | safe }};
+{% endif %}
+
 function applyPreset() {
     const sel = document.getElementById('presetSelector');
-    const opt = sel.options[sel.selectedIndex];
-    if (!opt.value) return;
-    document.querySelector('#createChallengeModal input[name="title"]').value = opt.dataset.title;
-    document.querySelector('#createChallengeModal textarea[name="description"]').value = opt.dataset.desc;
+    if (!sel.value) return;
+    const p = PRESET_DATA.find(p => p.id == sel.value);
+    if (!p) return;
+    document.querySelector('#createChallengeModal input[name="title"]').value = p.title;
+    document.querySelector('#createChallengeModal textarea[name="description"]').value = p.description;
+    if (p.login_info) document.querySelector('#createChallengeModal input[name="login_info"]').value = p.login_info;
+    if (p.judge_type) document.querySelector('#createChallengeModal select[name="judge_type"]').value = p.judge_type;
+    if (p.judge_config) document.querySelector('#createChallengeModal input[name="judge_config"]').value = p.judge_config;
+    if (p.dockerfile_content) document.querySelector('#createChallengeModal textarea[name="dockerfile_content"]').value = p.dockerfile_content;
+    document.querySelector('#createChallengeModal select[name="challenge_type"]').value = 'docker';
+    toggleDockerFields('create');
 }
 
 document.querySelectorAll('#compTabs button').forEach(btn => {
