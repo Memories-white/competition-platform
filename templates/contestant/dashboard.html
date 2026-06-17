@@ -1,45 +1,66 @@
 {% extends "base.html" %}
+{# 选手控制台 —— 展示当前所有竞赛的环境卡片和试卷卡片，选手可从此页面进入实操环境或试卷考试 #}
 {% block title %}选手控制台{% endblock %}
 
 {% block content %}
+<!-- ═══════════ 页面标题 ═══════════ -->
 <div class="page-header">
     <h4><i class="bi bi-pc-display"></i> 我的竞赛环境</h4>
 </div>
 
+{# 遍历所有竞赛数据，每个 comp_data 包含竞赛信息、环境列表、试卷列表和考试成绩 #}
 {% if comps %}
 {% for comp_data in comps %}
+<!-- ═══════════ 单场竞赛卡片 ═══════════ -->
 <div class="card mb-4">
+    <!-- ═══════ 卡片头部：竞赛名称 + 时间 + 总得分 ═══════ -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div>
+            <!-- 竞赛名称 -->
             <strong>{{ comp_data.competition.name }}</strong>
+            <!-- 竞赛时间区间，显示为 "MM-DD HH:MM ~ MM-DD HH:MM" 格式 -->
             <div class="small text-muted mt-1">
                 {{ comp_data.competition.start_time.strftime('%m-%d %H:%M') if comp_data.competition.start_time else '' }}
                 ~ {{ comp_data.competition.end_time.strftime('%m-%d %H:%M') if comp_data.competition.end_time else '' }}
             </div>
         </div>
+        <!-- 右侧：总分 / 总可能分 + 通过题数 -->
         <div class="text-end">
+            <!-- total_score = 已获总分，total_possible = 所有题目满分之和 -->
             <div class="fw-bold fs-5" style="color:var(--c-brand);">{{ comp_data.total_score }} / {{ comp_data.total_possible }}</div>
+            <!-- passed_count = 已通过题目数，total_challenges = 该竞赛总题目数 -->
             <small class="text-muted">通过 {{ comp_data.passed_count }}/{{ comp_data.total_challenges }} 题</small>
         </div>
     </div>
+    <!-- ═══════ 卡片主体：环境卡片列表 + 试卷卡片列表 ═══════ -->
     <div class="card-body">
+        {# 如果该竞赛有环境或试卷挑战，则渲染卡片；否则显示"暂无可用环境" #}
         {% if comp_data.environments or comp_data.exam_challenges %}
         <div class="row g-3">
+            <!-- ═══════ 实战环境卡片 ═══════ -->
+            {# environments 是分配给当前选手的容器环境列表 #}
             {% for env in comp_data.environments %}
             <div class="col-md-4">
                 <div class="card border h-100">
                     <div class="card-body d-flex flex-column">
+                        <!-- 环境对应的题目标题 -->
                         <h6 class="card-title mb-2">{{ env.challenge_title }}</h6>
                         <div class="mb-2">
+                            <!-- 容器状态标签：
+                                 running=运行中(绿色), stopped=已停止(黄色), pending=等待中, error=错误, removed=已删除 -->
                             <span class="badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">
                                 {{ {'running':'运行中','stopped':'已停止','pending':'等待中','error':'错误','removed':'已删除'}.get(env.status, env.status) }}
                             </span>
+                            <!-- 如果已获分 > 0，显示分数 -->
                             {% if env.points > 0 %}<span class="badge bg-info ms-1">{{ env.points }}分</span>{% endif %}
                         </div>
+                        <!-- 环境详细信息：主机端口和容器名称 -->
                         <div class="small text-muted mb-3">
                             <div>端口：{{ env.host_port or '未分配' }}</div>
                             <div>容器：<code class="code-tag">{{ env.container_name or '-' }}</code></div>
                         </div>
+                        <!-- "进入环境" 按钮 —— 跳转到环境详情页面 -->
+                        <!-- 路由：contestant.environment_detail，参数：env_id -->
                         <a href="{{ url_for('contestant.environment_detail', env_id=env.id) }}" class="btn btn-primary btn-sm w-100 mt-auto">
                             <i class="bi bi-terminal"></i> 进入环境
                         </a>
@@ -47,23 +68,32 @@
                 </div>
             </div>
             {% endfor %}
+
+            <!-- ═══════ 试卷考试卡片 ═══════ -->
+            {# exam_challenges 是该竞赛中包含的试卷类挑战 #}
             {% for exam_chal in comp_data.exam_challenges %}
             <div class="col-md-4">
+                <!-- 左侧橙色边框区分试卷卡片与实战环境 -->
                 <div class="card border h-100" style="border-left: 3px solid var(--c-accent);">
                     <div class="card-body d-flex flex-column">
+                        <!-- 试卷标题 -->
                         <h6 class="card-title mb-2"><i class="bi bi-journal-text text-warning me-1"></i>{{ exam_chal.title }}</h6>
                         <div class="mb-2">
                             <span class="badge bg-warning">试卷考试</span>
                             <span class="badge bg-info ms-1">{{ exam_chal.points }}分</span>
                         </div>
                         <p class="small text-muted mb-3">{{ exam_chal.description or '请点击进入考试作答' }}</p>
+                        {# 检查是否已有该试卷的成绩记录 #}
                         {% set exam_score = comp_data.exam_scores.get(exam_chal.id) %}
                         {% if exam_score %}
+                        <!-- 已有成绩时显示得分和是否通过 -->
                         <div class="alert alert-{{ 'success' if exam_score.passed else 'warning' }} small py-2 mb-2">
                             <i class="bi bi-{{ 'check-circle' if exam_score.passed else 'x-circle' }}"></i>
                             得分：{{ exam_score.score }} / {{ exam_chal.points }}
                         </div>
                         {% endif %}
+                        <!-- "进入考试" / "重新考试" 按钮 -->
+                        <!-- 路由：contestant.exam_page，参数：challenge_id -->
                         <a href="{{ url_for('contestant.exam_page', challenge_id=exam_chal.id) }}" class="btn btn-warning btn-sm w-100 mt-auto">
                             <i class="bi bi-pencil-square"></i>
                             {% if exam_score %}重新考试{% else %}进入考试{% endif %}
@@ -74,12 +104,14 @@
             {% endfor %}
         </div>
         {% else %}
+        <!-- 该竞赛下暂无可用的环境或试卷时显示提示 -->
         <p class="text-muted text-center py-3">暂无可用环境，请等待管理员部署</p>
         {% endif %}
     </div>
 </div>
 {% endfor %}
 {% else %}
+<!-- ═══════════ 空状态：无进行中竞赛 ═══════════ -->
 <div class="empty-state">
     <div class="empty-icon"><i class="bi bi-calendar-x"></i></div>
     <p>当前没有进行中的竞赛</p>

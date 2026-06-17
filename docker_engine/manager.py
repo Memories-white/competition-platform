@@ -37,10 +37,10 @@ def _ensure_network():
         logger.warning(f"Failed to ensure network: {e}")
 
 
-def get_free_port(start=30000, end=40000) -> int:
+def get_free_port(start=30000, end=40000, exclude_ports: set = None) -> int:
     try:
         client = get_client()
-        used_ports = set()
+        used_ports = exclude_ports.copy() if exclude_ports else set()
         for container in client.containers.list(all=True):
             ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
             if ports:
@@ -58,23 +58,35 @@ def get_free_port(start=30000, end=40000) -> int:
 
 
 def create_container(image_tag: str, container_name: str, cpu_limit: float = 0.5,
-                     mem_limit: str = "512m", expose_port: int = 80) -> dict:
+                     mem_limit: str = "512m", expose_ports: list = None) -> dict:
     _ensure_network()
-    host_port = get_free_port()
+    if expose_ports is None:
+        expose_ports = [80]
     try:
         client = get_client()
-        # Remove leftover container with the same name before creating
+        # 创建前先清理同名残留容器
         try:
             old = client.containers.get(container_name)
             old.remove(force=True)
             logger.info(f"Removed leftover container: {container_name}")
         except docker.errors.NotFound:
             pass
+
+        # 为每个容器端口分配宿主机端口（追踪已分配端口避免重复）
+        port_bindings = {}
+        host_ports = {}
+        allocated = set()
+        for port in expose_ports:
+            hp = get_free_port(exclude_ports=allocated)
+            allocated.add(hp)
+            port_bindings[f"{port}/tcp"] = hp
+            host_ports[port] = hp
+
         container = client.containers.run(
             image=image_tag,
             name=container_name,
             detach=True,
-            ports={f"{expose_port}/tcp": host_port},
+            ports=port_bindings,
             network=Config.CONTAINER_NETWORK,
             nano_cpus=int(cpu_limit * 1e9),
             mem_limit=mem_limit,
@@ -87,7 +99,9 @@ def create_container(image_tag: str, container_name: str, cpu_limit: float = 0.5
             "success": True,
             "container_id": container.id,
             "container_name": container_name,
-            "host_port": host_port,
+            "host_port": host_ports.get(22, host_ports.get(expose_ports[0], 0)),
+            "web_port": host_ports.get(80) or host_ports.get(443) or host_ports.get(5000) or host_ports.get(3000) or 0,
+            "host_ports": host_ports,
             "status": container.status,
         }
     except Exception as e:

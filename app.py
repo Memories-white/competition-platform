@@ -2,7 +2,7 @@ import os
 import logging
 from collections import deque
 from datetime import datetime, timezone
-from flask import Flask, redirect, url_for, session, request, jsonify, render_template
+from flask import Flask, redirect, url_for, session, request, jsonify, render_template, flash
 from flask_socketio import SocketIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 socketio = SocketIO()
 scheduler = BackgroundScheduler()
 
-# In-memory log store: deque of (timestamp, level, module, message)
+# 内存日志存储：双端队列 (时间戳, 级别, 模块, 消息)
 _log_buffer = deque(maxlen=500)
 
 
@@ -33,7 +33,7 @@ _mem_handler.setFormatter(logging.Formatter("%(message)s"))
 _mem_handler.setLevel(logging.INFO)
 logging.getLogger().addHandler(_mem_handler)
 
-# Also capture werkzeug access logs (prevent duplicate via propagation)
+# 同时捕获 werkzeug 访问日志（禁止传播避免重复）
 logging.getLogger("werkzeug").addHandler(_mem_handler)
 logging.getLogger("werkzeug").propagate = False
 logging.getLogger("apscheduler").addHandler(_mem_handler)
@@ -41,7 +41,7 @@ logging.getLogger("apscheduler").propagate = False
 
 
 def get_logs(limit=200, level=None):
-    """Return recent log entries, optionally filtered by level."""
+    """返回最近的日志条目，可按级别过滤。"""
     logs = list(_log_buffer)
     if level:
         logs = [l for l in logs if l["level"].upper() == level.upper()]
@@ -77,8 +77,47 @@ def create_app():
     def presets():
         if "user_id" not in session:
             return redirect(url_for("auth.login"))
+        if session.get("role") != "admin":
+            flash("需要管理员权限", "error")
+            return redirect(url_for("contestant.dashboard"))
         from data.presets import PRESETS
-        return render_template("presets.html", presets=PRESETS)
+        from docker_engine.builder import get_available_templates
+        return render_template("presets.html", presets=PRESETS, templates=get_available_templates())
+
+    @app.route("/presets/create", methods=["POST"])
+    def create_preset():
+        if "user_id" not in session or session.get("role") != "admin":
+            flash("需要管理员权限", "error")
+            return redirect(url_for("auth.login"))
+        from data.presets import PRESETS
+
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        login_info = request.form.get("login_info", "").strip()
+        judge_type = request.form.get("judge_type", "port")
+        judge_config = request.form.get("judge_config", "{}").strip()
+        dockerfile_content = request.form.get("dockerfile_content", "").strip()
+        category = request.form.get("category", "自定义").strip()
+        difficulty = request.form.get("difficulty", "基础").strip()
+
+        if not title:
+            flash("题目标题不能为空", "error")
+            return redirect(url_for("presets"))
+
+        new_id = max((p["id"] for p in PRESETS), default=-1) + 1
+        PRESETS.append({
+            "id": new_id,
+            "title": title,
+            "description": description,
+            "category": category,
+            "difficulty": difficulty,
+            "login_info": login_info,
+            "judge_type": judge_type,
+            "judge_config": judge_config,
+            "dockerfile_content": dockerfile_content,
+        })
+        flash(f"题库题目「{title}」创建成功", "success")
+        return redirect(url_for("presets"))
 
     @app.context_processor
     def inject_user():
@@ -99,35 +138,35 @@ def create_app():
 
 
 def _migrate_database(app):
-    """Add missing columns/tables for existing databases (SQLite-safe)."""
+    """为已有数据库添加缺失的列/表（SQLite 安全迁移）。"""
     from sqlalchemy import text, inspect
 
     with app.app_context():
         conn = db.engine.connect()
         inspector = inspect(db.engine)
 
-        # challenges.challenge_type
+        # 题目类型字段
         cols = [c["name"] for c in inspector.get_columns("challenges")]
         if "challenge_type" not in cols:
             conn.execute(text("ALTER TABLE challenges ADD COLUMN challenge_type VARCHAR(20) DEFAULT 'docker'"))
             conn.commit()
             logger.info("Migration: added challenges.challenge_type")
 
-        # scores.answers
+        # 答卷答案字段
         score_cols = [c["name"] for c in inspector.get_columns("scores")]
         if "answers" not in score_cols:
             conn.execute(text("ALTER TABLE scores ADD COLUMN answers TEXT DEFAULT ''"))
             conn.commit()
             logger.info("Migration: added scores.answers")
 
-        # challenges.login_info
+        # 题目登录信息字段
         chal_cols = [c["name"] for c in inspector.get_columns("challenges")]
         if "login_info" not in chal_cols:
             conn.execute(text("ALTER TABLE challenges ADD COLUMN login_info VARCHAR(200) DEFAULT ''"))
             conn.commit()
             logger.info("Migration: added challenges.login_info")
 
-        # competition.auto_deployed and deployed_at
+        # 自动部署标记和部署时间字段
         comp_cols = [c["name"] for c in inspector.get_columns("competitions")]
         if "auto_deployed" not in comp_cols:
             conn.execute(text("ALTER TABLE competitions ADD COLUMN auto_deployed BOOLEAN DEFAULT 0"))
@@ -138,7 +177,14 @@ def _migrate_database(app):
             conn.commit()
             logger.info("Migration: added competitions.deployed_at")
 
-        # exam_questions table
+        # 环境 Web 端口字段
+        env_cols = [c["name"] for c in inspector.get_columns("environments")]
+        if "web_port" not in env_cols:
+            conn.execute(text("ALTER TABLE environments ADD COLUMN web_port INTEGER DEFAULT 0"))
+            conn.commit()
+            logger.info("Migration: added environments.web_port")
+
+        # 试卷题目表
         if "exam_questions" not in inspector.get_table_names():
             from models.models import ExamQuestion
             ExamQuestion.__table__.create(db.engine, checkfirst=True)
@@ -183,7 +229,7 @@ def _start_scheduler(app):
                     logger.error(f"Auto-judge error [{comp.name}]: {e}")
 
     def auto_build_job():
-        """Auto-deploy environments for active competitions that haven't been deployed yet."""
+        """为已激活但尚未部署的竞赛自动部署环境。"""
         with app.app_context():
             from datetime import datetime, timezone
             active_comps = Competition.query.filter_by(status="active", auto_deployed=False).all()
@@ -212,11 +258,11 @@ def _start_scheduler(app):
                     })
 
     def auto_cleanup_job():
-        """Auto-judge and clean up environments for finished competitions."""
+        """对已结束的竞赛执行自动判题并清理环境。"""
         with app.app_context():
             finished_comps = Competition.query.filter_by(status="finished").all()
             for comp in finished_comps:
-                # Check if there are any non-removed environments
+                # 检查是否还有未移除的环境
                 active_envs = Environment.query.filter_by(competition_id=comp.id).filter(
                     ~Environment.status.in_(["removed"])
                 ).count()
@@ -270,10 +316,10 @@ def _start_scheduler(app):
 
 
 if __name__ == "__main__":
-    # Prevent double-import: when "python app.py" runs, __name__ is "__main__".
-    # Later, "from app import socketio" inside route modules would trigger a fresh
-    # import of app.py as "app", creating a second uninitialized SocketIO instance.
-    # Alias __main__ as "app" so both import paths resolve to the same module.
+    # 防止重复导入：当 "python app.py" 运行时，__name__ 为 "__main__"。
+    # 后续路由模块中 "from app import socketio" 会以 "app" 名称再次导入
+    # app.py，创建第二个未初始化的 SocketIO 实例。
+    # 将 __main__ 别名为 "app"，使两个导入路径指向同一模块。
     import sys as _sys
     _sys.modules["app"] = _sys.modules["__main__"]
 

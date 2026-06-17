@@ -79,10 +79,8 @@ def environment_detail(env_id):
         challenge_id=env.challenge_id,
     ).first()
 
-    host_ip = request.host.split(":")[0] if request.host else "localhost"
     from config import Config
-    if Config.HOST_IP and Config.HOST_IP != "localhost":
-        host_ip = Config.HOST_IP
+    host_ip = Config.HOST_IP
 
     return render_template("contestant/environment.html",
                            env=env, status=status, challenge=challenge,
@@ -144,7 +142,7 @@ def scoreboard():
                            rankings=rankings)
 
 
-# ── Exam ──
+# ── 试卷 ──
 
 @contestant_bp.route("/exam/<int:challenge_id>")
 @contestant_required

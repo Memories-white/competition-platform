@@ -5,13 +5,13 @@ from datetime import datetime, timezone
 from models import db
 from models.models import Environment, Challenge, Competition
 from docker_engine.manager import create_container, remove_container, get_container_status
-from docker_engine.builder import get_expose_port_from_dockerfile
+from docker_engine.builder import get_expose_ports_from_dockerfile
 
 logger = logging.getLogger(__name__)
 
 
 def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
-    """Deploy containers for all contestants for a competition. Emits progress via socketio."""
+    """为竞赛的所有选手部署容器环境，通过 SocketIO 实时推送进度。"""
     start_time = time.time()
 
     def emit(msg):
@@ -31,7 +31,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
     from models.models import User
     contestants = User.query.filter_by(role="contestant").all()
     challenges = Challenge.query.filter_by(competition_id=competition_id).all()
-    # Filter out exam-type challenges (no Docker deployment needed)
+    # 过滤掉试卷类题目（无需 Docker 部署）
     docker_challenges = [c for c in challenges if c.challenge_type != "exam"]
 
     if not contestants:
@@ -79,9 +79,12 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
                     remove_container(existing.container_id)
 
             container_name = f"comp-{competition_id}-u{user.id}-c{challenge.id}"
-            expose_port = get_expose_port_from_dockerfile(challenge.dockerfile_content or "")
+            expose_ports = get_expose_ports_from_dockerfile(challenge.dockerfile_content or "")
+            if not expose_ports:
+                expose_ports = [80]
 
             if not challenge.image_tag:
+                logger.warning(f"Deploy skip: challenge '{challenge.title}' has no image_tag (image not built)")
                 results["details"].append({
                     "user": user.username,
                     "challenge": challenge.title,
@@ -102,7 +105,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
                 container_name=container_name,
                 cpu_limit=competition.cpu_limit,
                 mem_limit=competition.mem_limit,
-                expose_port=expose_port,
+                expose_ports=expose_ports,
             )
 
             if result["success"]:
@@ -110,6 +113,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
                     existing.container_id = result["container_id"]
                     existing.container_name = container_name
                     existing.host_port = result["host_port"]
+                    existing.web_port = result.get("web_port", 0)
                     existing.status = "running"
                 else:
                     env = Environment(
@@ -119,6 +123,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
                         container_id=result["container_id"],
                         container_name=container_name,
                         host_port=result["host_port"],
+                        web_port=result.get("web_port", 0),
                         status="running",
                     )
                     db.session.add(env)
@@ -170,7 +175,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
 
 
 def stop_all_environments(competition_id: int) -> dict:
-    """Stop all containers for a competition."""
+    """停止竞赛的所有容器。"""
     environments = Environment.query.filter_by(competition_id=competition_id).all()
     stopped = 0
     errors = 0
@@ -190,7 +195,7 @@ def stop_all_environments(competition_id: int) -> dict:
 
 
 def remove_all_environments(competition_id: int) -> dict:
-    """Remove all containers for a competition."""
+    """删除竞赛的所有容器并清理环境记录。"""
     environments = Environment.query.filter_by(competition_id=competition_id).all()
     removed = 0
     errors = 0
@@ -210,7 +215,7 @@ def remove_all_environments(competition_id: int) -> dict:
 
 
 def get_user_environments(user_id: int, competition_id: int = None) -> list:
-    """Get all environments for a user, optionally filtered by competition."""
+    """获取用户的所有环境，可按竞赛过滤。"""
     q = Environment.query.filter_by(user_id=user_id)
     if competition_id:
         q = q.filter_by(competition_id=competition_id)
@@ -237,7 +242,7 @@ def get_user_environments(user_id: int, competition_id: int = None) -> list:
 
 
 def get_competition_environments(competition_id: int) -> list:
-    """Get all environments for a competition (admin view)."""
+    """获取竞赛的所有环境（管理员视图）。"""
     envs = Environment.query.filter_by(competition_id=competition_id).order_by(
         Environment.user_id, Environment.challenge_id
     ).all()

@@ -1,6 +1,26 @@
 import os
+import socket
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def _detect_host_ip():
+    """自动检测服务器局域网 IP，可通过环境变量 HOST_IP 覆盖。"""
+    env_ip = os.environ.get("HOST_IP", "")
+    if env_ip:
+        return env_ip
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        pass
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except Exception:
+        return "localhost"
 
 
 class Config:
@@ -18,7 +38,5 @@ class Config:
 
     DOCKER_TEMPLATES_DIR = os.path.join(BASE_DIR, "docker_templates")
 
-    # 选手访问容器的主机 IP（部署到云服务器时改为公网 IP）
-    HOST_IP = os.environ.get("HOST_IP", "localhost")
-    # Docker 远程主机（空 = 本地，支持 tcp://1.2.3.4:2375 远程连接）
+    HOST_IP = _detect_host_ip()
     DOCKER_HOST = os.environ.get("DOCKER_HOST", "")

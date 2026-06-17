@@ -1,9 +1,17 @@
+<!--
+  登录页面
+  未登录用户访问任何需要认证的页面都会被重定向到此。
+  登录成功后：管理员 → /admin/，选手 → /contestant/
+-->
 {% extends "base.html" %}
 {% block title %}登录 - 云计算竞赛系统{% endblock %}
 
 {% block content %}
+<!-- auth-page / auth-card 样式见 style.css « 登录 / 注册 » 区块 -->
 <div class="auth-page d-flex align-items-center justify-content-center">
     <div class="auth-card" style="width:400px;max-width:90vw;">
+
+        {# ── 品牌标识 ── #}
         <div class="text-center mb-4">
             <div style="width:48px;height:48px;background:linear-gradient(135deg,var(--c-brand),var(--c-brand-light));border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:1.4rem;color:#fff;margin-bottom:12px;">
                 <i class="bi bi-cloud-fill"></i>
@@ -12,6 +20,8 @@
             <p class="text-muted small">基于 Docker 的云计算竞赛环境自动构建系统</p>
         </div>
 
+        {# ── 登录表单 ──
+           提交到当前 URL，Flask 后端验证用户名密码。密码使用 bcrypt 哈希存储。 #}
         <form method="POST">
             <div class="mb-3">
                 <label class="form-label">用户名</label>
@@ -24,11 +34,14 @@
             <button type="submit" class="btn btn-primary w-100">登 录</button>
         </form>
 
+        {# 跳转注册页 #}
         <div class="text-center mt-3">
             <small class="text-muted">没有账号？<a href="{{ url_for('auth.register') }}">立即注册</a></small>
         </div>
 
         <hr>
+
+        {# 测试账号提示 — 演示/开发用，生产环境应删除 #}
         <div class="text-muted small">
             <p class="mb-1 fw-semibold">测试账号</p>
             <p class="mb-0">管理员：admin / admin123</p>

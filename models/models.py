@@ -10,7 +10,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default="contestant")  # admin | contestant
+    role = db.Column(db.String(20), nullable=False, default="contestant")  # 角色：admin | contestant
     team_name = db.Column(db.String(120), default="")
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -35,10 +35,10 @@ class Competition(db.Model):
     description = db.Column(db.Text, default="")
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
-    status = db.Column(db.String(20), default="draft")  # draft | active | finished
+    status = db.Column(db.String(20), default="draft")  # 状态：draft | active | finished
     cpu_limit = db.Column(db.Float, default=0.5)
     mem_limit = db.Column(db.String(20), default="512m")
-    auto_deployed = db.Column(db.Boolean, default=False)  # whether auto-build has fired
+    auto_deployed = db.Column(db.Boolean, default=False)  # 是否已触发自动部署
     deployed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -66,10 +66,10 @@ class Challenge(db.Model):
     competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, default="")
-    challenge_type = db.Column(db.String(20), default="docker")  # docker | exam
-    login_info = db.Column(db.String(200), default="")  # e.g. "SSH: root / password"
+    challenge_type = db.Column(db.String(20), default="docker")  # 题目类型：docker | exam
+    login_info = db.Column(db.String(200), default="")  # 登录信息，如 "SSH: root / password"
     dockerfile_content = db.Column(db.Text, default="")
-    judge_type = db.Column(db.String(20), default="port")  # port | command | file
+    judge_type = db.Column(db.String(20), default="port")  # 判题方式：port | command | file
     judge_config = db.Column(db.Text, default="{}")
     points = db.Column(db.Integer, default=100)
     order = db.Column(db.Integer, default=0)
@@ -102,9 +102,9 @@ class ExamQuestion(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id"), nullable=False)
-    question_type = db.Column(db.String(20), nullable=False)  # single_choice | true_false | fill_blank
+    question_type = db.Column(db.String(20), nullable=False)  # 题型：single_choice | true_false | fill_blank
     question_text = db.Column(db.Text, nullable=False)
-    options = db.Column(db.Text, default="[]")  # JSON array
+    options = db.Column(db.Text, default="[]")  # JSON 数组
     answer = db.Column(db.String(500), nullable=False)
     points = db.Column(db.Integer, default=0)
     order = db.Column(db.Integer, default=0)
@@ -132,7 +132,8 @@ class Environment(db.Model):
     container_id = db.Column(db.String(200), default="")
     container_name = db.Column(db.String(200), default="")
     host_port = db.Column(db.Integer, default=0)
-    status = db.Column(db.String(20), default="pending")  # pending | running | stopped | error
+    web_port = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(20), default="pending")  # 环境状态：pending | running | stopped | error
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
@@ -144,6 +145,7 @@ class Environment(db.Model):
             "container_id": self.container_id[:12] if self.container_id else "",
             "container_name": self.container_name,
             "host_port": self.host_port,
+            "web_port": self.web_port,
             "status": self.status,
         }
 
@@ -158,7 +160,7 @@ class Score(db.Model):
     score = db.Column(db.Integer, default=0)
     passed = db.Column(db.Boolean, default=False)
     judged_at = db.Column(db.DateTime)
-    answers = db.Column(db.Text, default="")  # JSON for exam answers
+    answers = db.Column(db.Text, default="")  # 试卷答案 JSON
 
     def to_dict(self):
         return {

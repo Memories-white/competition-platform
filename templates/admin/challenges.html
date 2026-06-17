@@ -1,3 +1,8 @@
+<!--
+  题目管理页（特定竞赛）
+  列出竞赛下所有题目卡片，支持添加/编辑/删除。
+  添加题目时可选择内置模板自动填充 Dockerfile，提交后系统自动构建 Docker 镜像。
+-->
 {% extends "base.html" %}
 {% block title %}{{ competition.name }} - 题目管理{% endblock %}
 
@@ -7,6 +12,7 @@
         <a href="{{ url_for('admin.competitions') }}" class="text-decoration-none">&larr; 返回竞赛列表</a>
         <h2 class="mt-1"><i class="bi bi-list-check"></i> {{ competition.name }} - 题目管理</h2>
     </div>
+    {# 点击弹出添加题目弹窗 (createChallengeModal) #}
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createChallengeModal">
         <i class="bi bi-plus-lg"></i> 添加题目
     </button>
@@ -14,14 +20,17 @@
 
 <div class="row g-4">
     {% for chal in challenges %}
+    {# ══════ 单个题目卡片 ══════ #}
     <div class="col-md-6">
         <div class="card">
             <div class="card-body">
+                {# 标题 + 分数 #}
                 <div class="d-flex justify-content-between">
                     <h5 class="card-title">#{{ chal.order }} {{ chal.title }}</h5>
                     <span class="badge bg-primary">{{ chal.points }}分</span>
                 </div>
                 <p class="text-muted small">{{ chal.description or '暂无描述' }}</p>
+                {# 判题方式 + 镜像构建状态 #}
                 <div class="small mb-2">
                     <span class="text-muted">判题方式: </span>
                     <span class="badge bg-secondary">{{ {'port':'端口检测','command':'命令执行','file':'文件检测'}.get(chal.judge_type, chal.judge_type) }}</span>
@@ -33,6 +42,7 @@
                     <span class="badge bg-warning">未构建</span>
                     {% endif %}
                 </div>
+                {# 操作按钮：编辑 / 删除 #}
                 <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal"
                         data-bs-target="#editChallengeModal{{ chal.id }}">
                     <i class="bi bi-pencil"></i> 编辑
@@ -47,7 +57,7 @@
         </div>
     </div>
 
-    <!-- Edit Challenge Modal -->
+    {# ══════ 编辑题目弹窗（每个题目一个） ══════ #}
     <div class="modal fade" id="editChallengeModal{{ chal.id }}" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -57,6 +67,7 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
+                        {# 标题 / 分数 / 排序 #}
                         <div class="row mb-3">
                             <div class="col-8">
                                 <label class="form-label">标题</label>
@@ -75,6 +86,7 @@
                             <label class="form-label">描述</label>
                             <textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea>
                         </div>
+                        {# 判题方式 + 配置 #}
                         <div class="row mb-3">
                             <div class="col-6">
                                 <label class="form-label">判题方式</label>
@@ -90,6 +102,7 @@
                                        placeholder='{"port":80} 或 {"cmd":"curl localhost"} 或 {"path":"/etc/nginx/nginx.conf"}'>
                             </div>
                         </div>
+                        {# Dockerfile 编辑器 — 修改后会自动重新构建镜像 #}
                         <div class="mb-3">
                             <label class="form-label">Dockerfile内容 (修改后会自动重新构建镜像)</label>
                             <textarea class="form-control dockerfile-editor" name="dockerfile_content"
@@ -105,6 +118,7 @@
         </div>
     </div>
     {% else %}
+    {# 空状态提示 #}
     <div class="col-12">
         <div class="card p-5 text-center text-muted">
             <i class="bi bi-inbox" style="font-size: 3rem;"></i>
@@ -114,7 +128,12 @@
     {% endfor %}
 </div>
 
-<!-- Create Challenge Modal -->
+{# ═══════════ 添加题目弹窗 ═══════════
+   提交到 POST /admin/competitions/<comp_id>/challenges/create
+   提交后后端会：
+   1. 创建 Challenge 记录
+   2. 调用 build_image() 构建 Docker 镜像
+   3. 将镜像 tag 写入 challenge.image_tag #}
 <div class="modal fade" id="createChallengeModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -124,6 +143,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    {# 标题 / 分数 / 排序 #}
                     <div class="row mb-3">
                         <div class="col-8">
                             <label class="form-label">题目标题 *</label>
@@ -144,6 +164,7 @@
                         <textarea class="form-control" name="description" rows="2"
                                   placeholder="描述选手需要完成的任务"></textarea>
                     </div>
+                    {# 判题方式选择 — 决定系统如何验证选手完成情况 #}
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label">判题方式</label>
@@ -159,6 +180,7 @@
                                    placeholder='{"port":80} 或 {"cmd":"curl localhost"} 或 {"path":"/etc/config"}'>
                         </div>
                     </div>
+                    {# 模板选择器 — 选择后自动填充 Dockerfile #}
                     <div class="mb-3">
                         <label class="form-label">使用内置模板 (可选，将自动填充Dockerfile)</label>
                         <select class="form-select" name="template_name" id="templateSelect">
@@ -168,6 +190,7 @@
                             {% endfor %}
                         </select>
                     </div>
+                    {# Dockerfile 编辑器 #}
                     <div class="mb-3">
                         <label class="form-label">Dockerfile内容 (选择模板后自动填充)</label>
                         <textarea class="form-control dockerfile-editor" name="dockerfile_content"
@@ -187,14 +210,13 @@
 
 {% block extra_scripts %}
 <script>
-// Load template Dockerfile content when a template is selected
+// 选择模板时通过 AJAX 获取模板 Dockerfile 内容并填充编辑器
 document.getElementById('templateSelect').addEventListener('change', function() {
     const templateName = this.value;
     if (!templateName) return;
-    // The template content is pre-loaded; we do a quick fetch
     fetch('/admin/competitions/{{ competition.id }}/challenges')
-        .then(() => {}) // page already has templates data
-    // For simplicity, we submit the form with the template name and backend fills it
+        .then(() => {}) // 页面已有模板数据
+    // 简化处理：提交表单时带上模板名称，由后端填充
 });
 </script>
 {% endblock %}

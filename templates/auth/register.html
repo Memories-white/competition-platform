@@ -1,9 +1,16 @@
+<!--
+  选手注册页面
+  任何人都可以注册为选手（role=contestant），管理员只能由已有管理员创建。
+  注册后自动跳转登录页。
+-->
 {% extends "base.html" %}
 {% block title %}注册 - 云计算竞赛系统{% endblock %}
 
 {% block content %}
 <div class="auth-page d-flex align-items-center justify-content-center">
     <div class="auth-card" style="width:400px;max-width:90vw;">
+
+        {# ── 品牌标识 ── #}
         <div class="text-center mb-4">
             <div style="width:48px;height:48px;background:linear-gradient(135deg,var(--c-brand),var(--c-brand-light));border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:1.4rem;color:#fff;margin-bottom:12px;">
                 <i class="bi bi-person-plus-fill"></i>
@@ -12,6 +19,10 @@
             <p class="text-muted small">创建参赛账号</p>
         </div>
 
+        {# ── 注册表单 ──
+           用户名：唯一，重复注册会报错。
+           队伍名称：可选，用于团队排名显示。
+           密码：明文提交，后端 bcrypt 加密存储。 #}
         <form method="POST">
             <div class="mb-3">
                 <label class="form-label">用户名</label>
@@ -28,6 +39,7 @@
             <button type="submit" class="btn btn-primary w-100">注 册</button>
         </form>
 
+        {# 跳转登录页 #}
         <div class="text-center mt-3">
             <small class="text-muted">已有账号？<a href="{{ url_for('auth.login') }}">立即登录</a></small>
         </div>

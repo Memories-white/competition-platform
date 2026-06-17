@@ -1,4 +1,5 @@
 import json
+import logging
 import threading
 from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
@@ -9,36 +10,33 @@ from docker_engine.builder import build_image, build_image_from_template, get_im
 from docker_engine.manager import get_container_status, start_container, stop_container, remove_container
 from data.presets import PRESETS
 
+logger = logging.getLogger(__name__)
+
 OS_IMAGES = {
     "Ubuntu 22.04": "ubuntu:22.04",
     "Ubuntu 20.04": "ubuntu:20.04",
-    "CentOS 7": "centos:7",
     "Debian 12": "debian:12",
-    "Rocky Linux 9": "rockylinux:9",
 }
 
 DOCKER_INSTALL_CMDS = {
     "Ubuntu 22.04": "RUN apt-get update && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
     "Ubuntu 20.04": "RUN apt-get update && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
     "Debian 12": "RUN apt-get update && apt-get install -y ca-certificates curl && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
-    "CentOS 7": "RUN yum install -y yum-utils && yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && yum install -y docker-ce-cli",
-    "Rocky Linux 9": "RUN dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo && dnf install -y docker-ce-cli",
 }
 
 def _inject_docker_install(dockerfile, os_choice):
-    """Inject Docker CLI installation commands into a Dockerfile after the base packages."""
+    """在第一个 apt-get install 行之前注入 Docker CLI 安装命令。"""
     cmd = DOCKER_INSTALL_CMDS.get(os_choice)
     if not cmd:
         return dockerfile
-    # Insert after the first apt-get install / yum install line
     lines = dockerfile.split("\n")
     result = []
     injected = False
     for line in lines:
-        result.append(line)
-        if not injected and ("apt-get install" in line or "yum install" in line or "dnf install" in line):
-            result.append(f"# Auto-install Docker CLI\n{cmd}")
+        if not injected and "apt-get install" in line:
+            result.append(f"# 自动安装 Docker CLI\n{cmd}")
             injected = True
+        result.append(line)
     return "\n".join(result)
 from services.environment_service import (
     deploy_competition_environments,
@@ -108,8 +106,9 @@ def create_competition():
         db.session.add(comp)
         db.session.commit()
 
-        # Create challenges from selected presets
+        # 从选中的题库预设创建题目
         preset_ids = request.form.getlist("preset_ids")
+        logger.info(f"Create competition '{name}': preset_ids={preset_ids}, os={request.form.get('os_choice')}, docker={request.form.get('install_docker')}")
         if preset_ids:
             created = 0
             for pid in preset_ids:
@@ -118,11 +117,11 @@ def create_competition():
                 if not preset:
                     continue
                 dockerfile = preset["dockerfile_content"]
-                # Apply OS selection
+                # 应用操作系统选择
                 os_choice = request.form.get("os_choice", "Ubuntu 22.04")
                 os_image = OS_IMAGES.get(os_choice, "ubuntu:22.04")
                 dockerfile = dockerfile.replace("FROM ubuntu:22.04", f"FROM {os_image}")
-                # Add Docker installation if requested
+                # 如果勾选了安装 Docker 则注入安装命令
                 if request.form.get("install_docker") == "on":
                     dockerfile = _inject_docker_install(dockerfile, os_choice)
                 chal = Challenge(
@@ -138,11 +137,15 @@ def create_competition():
                     order=created + 1,
                 )
                 db.session.add(chal)
+                db.session.flush()  # get chal.id for image tag
                 try:
-                    build_image(dockerfile, f"comp-{comp.id}-preset-{pid}")
-                    chal.image_tag = f"comp-{comp.id}-preset-{pid}"
-                except Exception:
-                    pass
+                    success, msg = build_image(chal.id, dockerfile)
+                    if success:
+                        chal.image_tag = msg
+                    else:
+                        logger.error(f"Build failed for challenge {chal.id}: {msg}")
+                except Exception as e:
+                    logger.error(f"Build exception for challenge {chal.id}: {e}")
                 created += 1
             db.session.commit()
             flash(f"竞赛创建成功，已从题库添加 {created} 道题目", "success")
@@ -190,7 +193,7 @@ def update_competition_status(comp_id):
     if new_status in ("draft", "active", "finished"):
         comp.status = new_status
         if new_status == "active":
-            comp.auto_deployed = False  # Reset to let scheduler pick it up
+            comp.auto_deployed = False  # 重置以让调度器重新触发部署
         db.session.commit()
 
         if new_status == "active":
@@ -210,7 +213,7 @@ def delete_competition(comp_id):
         return redirect(url_for("admin.competitions"))
 
     remove_all_environments(comp_id)
-    # Delete scores and challenges first to avoid FK constraint issues
+    # 先删除成绩和题目，避免外键约束冲突
     Score.query.filter_by(competition_id=comp_id).delete()
     Challenge.query.filter_by(competition_id=comp_id).delete()
     db.session.delete(comp)
@@ -379,7 +382,7 @@ def deploy_environments(comp_id):
 
     app = current_app._get_current_object()
 
-    # Quick pre-check: Docker available?
+    # 快速预检：Docker 是否可用？
     docker_ok = True
     try:
         from docker_engine.manager import get_client
@@ -429,6 +432,8 @@ def environments(comp_id):
 def environment_action(env_id, action):
     env = db.session.get(Environment, env_id)
     if not env:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": "环境不存在"})
         flash("环境不存在", "error")
         return redirect(url_for("admin.competitions"))
 
@@ -444,6 +449,8 @@ def environment_action(env_id, action):
         env.container_id = ""
 
     db.session.commit()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True, "action": action, "status": env.status})
     return redirect(url_for("admin.competition_detail", comp_id=env.competition_id))
 
 
@@ -451,6 +458,8 @@ def environment_action(env_id, action):
 @admin_required
 def stop_all(comp_id):
     result = stop_all_environments(comp_id)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True, "stopped": result["stopped"], "errors": result["errors"]})
     flash(f"已停止 {result['stopped']} 个容器，{result['errors']} 个失败", "success")
     return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
@@ -459,6 +468,8 @@ def stop_all(comp_id):
 @admin_required
 def remove_all(comp_id):
     result = remove_all_environments(comp_id)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True, "removed": result["removed"], "errors": result["errors"]})
     flash(f"已删除 {result['removed']} 个容器", "success")
     return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
@@ -486,7 +497,7 @@ def scores(comp_id):
 
     challenges_list = Challenge.query.filter_by(competition_id=comp_id).order_by(Challenge.order).all()
 
-    # Build a lookup: (user_id, challenge_id) -> Score
+    # 构建查找表：(user_id, challenge_id) -> Score
     score_lookup = {}
     for s in Score.query.filter_by(competition_id=comp_id).all():
         score_lookup[(s.user_id, s.challenge_id)] = s
@@ -496,7 +507,7 @@ def scores(comp_id):
                            challenges=challenges_list)
 
 
-# ── Exam Question Management ──
+# ── 试卷题目管理 ──
 
 @admin_bp.route("/challenges/<int:challenge_id>/exam-questions", methods=["POST"])
 @admin_required
@@ -559,7 +570,7 @@ def delete_exam_question(question_id):
     return jsonify({"success": True, "challenge_id": challenge_id})
 
 
-# ── User Management ──
+# ── 用户管理 ──
 
 @admin_bp.route("/users")
 @admin_required
@@ -630,12 +641,26 @@ def delete_user(user_id):
     return redirect(url_for("admin.users"))
 
 
-# ── Metrics ──
+# ── 模板 API ──
+
+@admin_bp.route("/templates/<template_name>/dockerfile")
+@admin_required
+def template_dockerfile(template_name):
+    import os
+    from config import Config
+    tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
+    if not os.path.isfile(tpl_path):
+        return jsonify({"error": "模板不存在"}), 404
+    with open(tpl_path) as f:
+        return jsonify({"dockerfile": f.read()})
+
+
+# ── 部署指标 ──
 
 @admin_bp.route("/metrics")
 @admin_required
 def deploy_metrics():
-    """Return deployment metrics for all competitions (for thesis data)."""
+    """返回所有竞赛的部署指标数据（用于论文数据分析）。"""
     comps = Competition.query.order_by(Competition.created_at.desc()).all()
     data = []
     for comp in comps:
@@ -661,7 +686,7 @@ def deploy_metrics():
     return jsonify({"metrics": data})
 
 
-# ── Logs ──
+# ── 系统日志 ──
 
 @admin_bp.route("/logs")
 @admin_required

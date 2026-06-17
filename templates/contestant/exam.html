@@ -1,24 +1,32 @@
 {% extends "base.html" %}
+{# 试卷考试页面 —— 展示试卷中所有题目，支持单选、判断、填空三种题型，提交后即时显示得分和答题详情 #}
 {% block title %}{{ challenge.title }} - 试卷考试{% endblock %}
 
 {% block content %}
+<!-- ═══════════ 面包屑导航 ═══════════ -->
+<!-- 从"我的环境"进入 → 显示当前试卷名称 -->
 <div class="breadcrumb-bar">
     <a href="{{ url_for('contestant.dashboard') }}">我的环境</a>
     <span>/</span>
     <span>{{ challenge.title }}</span>
 </div>
 
+<!-- ═══════════ 页面标题栏 ═══════════ -->
+<!-- 显示试卷标题和满分分值 -->
 <div class="page-header">
     <h4><i class="bi bi-journal-text text-warning"></i> {{ challenge.title }}</h4>
     <span class="badge bg-info fs-6">{{ challenge.points }} 分</span>
 </div>
 
+{# 如果有试卷描述（由管理员创建时填写），显示在题目列表上方 #}
 {% if challenge.description %}
 <div class="alert alert-light border mb-4">
     <i class="bi bi-info-circle me-2"></i>{{ challenge.description }}
 </div>
 {% endif %}
 
+<!-- ═══════════ 已有成绩提示 ═══════════ -->
+{# 如果选手之前已提交过本次考试，显示历史成绩 #}
 {% if existing_score %}
 <div class="alert alert-{{ 'success' if existing_score.passed else 'warning' }} mb-4">
     <i class="bi bi-{{ 'check-circle-fill' if existing_score.passed else 'exclamation-circle-fill' }}"></i>
@@ -27,28 +35,45 @@
 </div>
 {% endif %}
 
+<!-- ═══════════ 考试表单 ═══════════ -->
+<!-- 使用 <form> 包裹所有题目，但不使用传统 POST 提交，而是通过 JS 的 FormData 收集并 AJAX 提交 -->
 <form id="examForm">
+    <!-- CSRF 防护令牌 —— 后端校验防止跨站请求伪造 -->
     <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+
+    {# 遍历该试卷中的所有问题 #}
     {% for q in questions %}
+    <!-- ═══════ 单道题目卡片 ═══════ -->
+    <!-- 每道题一个独立卡片，id="q-<question_id>" 方便后续定位 -->
     <div class="card mb-3" id="q-{{ q.id }}">
         <div class="card-body">
+            <!-- 题目标题栏：序号 + 题目文字 + 分值 -->
             <div class="d-flex justify-content-between align-items-start mb-3">
                 <h6 class="mb-0">
+                    <!-- loop.index 是 Jinja2 的 1-based 循环计数器，用作题号 -->
                     <span class="badge bg-primary me-2">{{ loop.index }}</span>
                     {{ q.question_text }}
                 </h6>
+                <!-- 每题的分值 -->
                 <span class="badge bg-secondary">{{ q.points }} 分</span>
             </div>
 
+            <!-- ═══════ 题型一：单选题 (single_choice) ═══════ -->
+            {# 选项通过 q.options_list 传入（如 ["A. 选项1", "B. 选项2", ...]）
+               每个选项渲染为一个 radio button，同一题共享 name="q_<id>" #}
             {% if q.question_type == 'single_choice' %}
             <div class="ms-4">
                 {% for opt in q.options_list %}
                 <div class="form-check mb-2">
+                    <!-- value 取选项首字母（A/B/C/D），作为提交给后端的答案 -->
                     <input class="form-check-input" type="radio" name="q_{{ q.id }}" value="{{ opt[:1] }}" id="q{{ q.id }}_{{ loop.index }}">
                     <label class="form-check-label" for="q{{ q.id }}_{{ loop.index }}">{{ opt }}</label>
                 </div>
                 {% endfor %}
             </div>
+
+            <!-- ═══════ 题型二：判断题 (true_false) ═══════ -->
+            {# 两个 radio：正确 / 错误，name 规则与单选一致 #}
             {% elif q.question_type == 'true_false' %}
             <div class="ms-4">
                 <div class="form-check form-check-inline">
@@ -60,6 +85,9 @@
                     <label class="form-check-label" for="q{{ q.id }}_false"><i class="bi bi-x-lg text-danger"></i> 错误</label>
                 </div>
             </div>
+
+            <!-- ═══════ 题型三：填空题 (fill_blank) ═══════ -->
+            {# 文本框输入答案，name 规则同上 #}
             {% elif q.question_type == 'fill_blank' %}
             <div class="ms-4">
                 <input type="text" class="form-control" name="q_{{ q.id }}" placeholder="请输入答案" style="max-width:400px;">
@@ -69,14 +97,19 @@
     </div>
     {% endfor %}
 
+    {# 如果有题目则显示提交按钮，否则显示空状态 #}
     {% if questions %}
+    <!-- ═══════ 操作按钮区 ═══════ -->
     <div class="d-flex gap-2 mb-5">
+        <!-- 提交按钮 —— 点击触发 submitExam() 函数，将 challenge.id 作为参数 -->
         <button type="button" class="btn btn-warning btn-lg" id="submitExamBtn" onclick="submitExam({{ challenge.id }})">
             <i class="bi bi-send"></i> 提交答案
         </button>
+        <!-- 返回按钮 —— 回到选手控制台 -->
         <a href="{{ url_for('contestant.dashboard') }}" class="btn btn-outline-secondary btn-lg">返回</a>
     </div>
     {% else %}
+    <!-- 试卷无题目的空状态 -->
     <div class="empty-state">
         <div class="empty-icon"><i class="bi bi-journal-x"></i></div>
         <p>该试卷暂无试题，请等待老师添加</p>
@@ -84,47 +117,69 @@
     {% endif %}
 </form>
 
+<!-- ═══════════ 判分结果展示区 ═══════════ -->
+<!-- 初始隐藏，提交后由 submitExam() 填充结果并显示 -->
 <div id="examResult" style="display:none;"></div>
 {% endblock %}
 
+{# ═══════════ 页面专属 JavaScript ═══════════ #}
 {% block extra_scripts %}
 <script>
+/**
+ * 提交试卷答案
+ * 后端 API：POST /contestant/exam/<challengeId>/submit
+ * 请求方式：FormData（含所有 q_<id> 字段的答案和 CSRF token）
+ * 返回 JSON：{ success, passed, score, total_points, details: [{ question_text, is_correct, points, max_points, user_answer, correct_answer }] }
+ *
+ * @param {number} challengeId - 试卷挑战的 ID
+ */
 async function submitExam(challengeId) {
     const btn = document.getElementById('submitExamBtn');
     const resultDiv = document.getElementById('examResult');
     const form = document.getElementById('examForm');
 
-    // Check if at least one question answered
+    // 前端校验：检查用户是否至少回答了一道题
+    // 选中的 radio 或有值的 text 输入框数量 > 0
     const answered = form.querySelectorAll('input[type="radio"]:checked, input[type="text"][value]').length;
     if (answered === 0) {
         alert('请至少回答一道题');
         return;
     }
 
+    // 二次确认弹窗，防止误提交
     if (!confirm('确定提交答案？提交后可以重新作答。')) return;
 
+    // 禁用按钮，显示加载状态，防止重复提交
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 判分中...';
 
     try {
+        // 收集表单数据（自动包含所有 name="q_<id>" 字段和 CSRF token）
         const formData = new FormData(form);
+        // 调用后端评分 API：POST /contestant/exam/<challengeId>/submit
         const resp = await fetch(`/contestant/exam/${challengeId}/submit`, {
             method: 'POST',
             body: formData,
         });
         const data = await resp.json();
 
+        // 显示结果区域
         resultDiv.style.display = 'block';
         if (data.success) {
+            // 构建评分结果 HTML
+            // data.passed 表示是否通过（分数线通常为 60%）
             let html = `<div class="alert alert-${data.passed ? 'success' : 'warning'} mb-3">`;
             html += `<h5><i class="bi bi-${data.passed ? 'check-circle-fill' : 'exclamation-circle-fill'}"></i> `;
             html += `得分：${data.score} / ${data.total_points} 分`;
+            // 通过/未通过标签
             html += data.passed ? ' <span class="badge bg-success">通过</span>' : ' <span class="badge bg-warning">未通过（需60%）</span>';
             html += `</h5></div>`;
 
+            // 如果后端返回了逐题详情，逐条渲染
             if (data.details) {
                 html += '<h6 class="mb-3">答题详情：</h6>';
                 data.details.forEach((d, i) => {
+                    // 每题显示：对号/叉号 + 题序 + 题目文字 + 得分
                     const icon = d.is_correct ? '<i class="bi bi-check-lg text-success"></i>' : '<i class="bi bi-x-lg text-danger"></i>';
                     html += `<div class="card mb-2 ${d.is_correct ? 'border-success' : 'border-danger'}">`;
                     html += `<div class="card-body py-2">`;
@@ -132,21 +187,27 @@ async function submitExam(challengeId) {
                     html += `<span>${icon} <strong>${i + 1}.</strong> ${d.question_text}</span>`;
                     html += `<span class="badge bg-${d.is_correct ? 'success' : 'danger'}">${d.points} / ${d.max_points} 分</span>`;
                     html += `</div>`;
+                    // 答错的题目显示用户答案和正确答案对照
                     if (!d.is_correct) {
                         html += `<div class="small text-muted mt-1">你的答案：<span class="text-danger">${d.user_answer || '未作答'}</span> → 正确答案：<span class="text-success">${d.correct_answer}</span></div>`;
                     }
                     html += `</div></div>`;
                 });
             }
+            // 将构建好的 HTML 插入结果区域
             resultDiv.innerHTML = html;
+            // 自动滚动到结果区域，提升用户体验
             window.scrollTo({ top: resultDiv.offsetTop - 20, behavior: 'smooth' });
         } else {
+            // 后端返回失败（如校验不过）
             resultDiv.innerHTML = `<div class="alert alert-danger">${data.error || '提交失败'}</div>`;
         }
     } catch (e) {
+        // 网络错误或 JS 异常
         resultDiv.style.display = 'block';
         resultDiv.innerHTML = `<div class="alert alert-danger">请求失败：${e.message}</div>`;
     }
+    // 恢复按钮可用状态，文案改为"重新提交"（允许再次作答）
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-send"></i> 重新提交';
 }

@@ -1,9 +1,15 @@
+<!--
+  竞赛管理列表页
+  显示所有竞赛卡片（草稿/进行中/已结束），支持创建、编辑、删除、启停竞赛。
+  创建竞赛时可按需从题库勾选预设题目，系统自动构建镜像。
+-->
 {% extends "base.html" %}
 {% block title %}竞赛管理{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <h4><i class="bi bi-trophy"></i> 竞赛管理</h4>
+    {# 点击弹出创建竞赛弹窗 (createCompModal) #}
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCompModal">
         <i class="bi bi-plus-lg"></i> 创建竞赛
     </button>
@@ -12,9 +18,11 @@
 {% if competitions %}
 <div class="row g-4">
     {% for comp in competitions %}
+    {# ══════ 单个竞赛卡片 ══════ #}
     <div class="col-lg-4 col-md-6">
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
+                {# 标题 + 状态徽章 #}
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <h5 class="card-title mb-0" style="font-weight:700;">{{ comp.name }}</h5>
                     <span class="badge bg-{{ 'success' if comp.status=='active' else 'secondary' if comp.status=='draft' else 'info' }}">
@@ -23,17 +31,21 @@
                 </div>
                 <p class="text-muted small mb-3">{{ comp.description or '暂无描述' }}</p>
 
+                {# 竞赛元信息：时间、资源、题目数、环境数 #}
                 <div class="small text-muted mb-3">
                     <div><i class="bi bi-calendar3 me-1"></i> {{ comp.start_time.strftime('%m-%d %H:%M') if comp.start_time else '-' }} ~ {{ comp.end_time.strftime('%m-%d %H:%M') if comp.end_time else '-' }}</div>
                     <div><i class="bi bi-cpu me-1"></i> CPU {{ comp.cpu_limit }}核 · 内存 {{ comp.mem_limit }}</div>
                     <div><i class="bi bi-box me-1"></i> {{ comp.challenges|length }} 题 · {{ comp.environments|length }} 环境</div>
                 </div>
 
+                {# 主操作按钮：进入管理页 #}
                 <a href="{{ url_for('admin.competition_detail', comp_id=comp.id) }}" class="btn btn-primary btn-sm w-100 mb-2 mt-auto">
                     <i class="bi bi-gear"></i> 管理此竞赛
                 </a>
 
+                {# 底部操作栏：启停 / 编辑 / 删除 #}
                 <div class="d-flex gap-1">
+                    {# 状态切换：草稿→开始，进行中→结束，已结束→重开 #}
                     <form method="POST" action="{{ url_for('admin.update_competition_status', comp_id=comp.id) }}" class="flex-grow-1">
                         <input type="hidden" name="status" value="{{ 'active' if comp.status=='draft' else 'finished' if comp.status=='active' else 'draft' }}">
                         <button type="submit" class="btn btn-outline-{{ 'success' if comp.status=='draft' else 'warning' if comp.status=='active' else 'secondary' }} btn-sm w-100">
@@ -42,7 +54,9 @@
                             {% else %}<i class="bi bi-arrow-repeat"></i> 重开{% endif %}
                         </button>
                     </form>
+                    {# 编辑按钮 → editCompModal{{ comp.id }} #}
                     <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editCompModal{{ comp.id }}"><i class="bi bi-pencil"></i></button>
+                    {# 删除按钮：直接 POST 提交 #}
                     <form method="POST" action="{{ url_for('admin.delete_competition', comp_id=comp.id) }}" onsubmit="return confirm('确定删除此竞赛及所有关联数据？')">
                         <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
                     </form>
@@ -51,7 +65,8 @@
         </div>
     </div>
 
-    <!-- Edit Modal -->
+    {# ══════ 编辑弹窗（每个竞赛一个） ══════
+       修改名称、描述、时间、资源配置 #}
     <div class="modal fade" id="editCompModal{{ comp.id }}" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -64,6 +79,7 @@
                             <div class="col-6"><label class="form-label">开始时间</label><input type="datetime-local" class="form-control" name="start_time" value="{{ comp.start_time.strftime('%Y-%m-%dT%H:%M') if comp.start_time else '' }}"></div>
                             <div class="col-6"><label class="form-label">结束时间</label><input type="datetime-local" class="form-control" name="end_time" value="{{ comp.end_time.strftime('%Y-%m-%dT%H:%M') if comp.end_time else '' }}"></div>
                         </div>
+                        {# 资源限制调整 #}
                         <div class="row mb-3">
                             <div class="col-6"><label class="form-label">CPU (核)</label><input type="number" step="0.1" class="form-control" name="cpu_limit" value="{{ comp.cpu_limit }}"></div>
                             <div class="col-6"><label class="form-label">内存</label><input type="text" class="form-control" name="mem_limit" value="{{ comp.mem_limit }}"></div>
@@ -80,40 +96,54 @@
     {% endfor %}
 </div>
 {% else %}
+{# 空状态提示 #}
 <div class="empty-state">
     <div class="empty-icon"><i class="bi bi-inbox"></i></div>
     <p>暂无竞赛，点击右上角创建第一个竞赛</p>
 </div>
 {% endif %}
 
-<!-- Create Modal -->
+{# ═══════════ 创建竞赛弹窗 ═══════════
+   提交到 POST /admin/competitions/create
+   表单字段：
+   - name: 竞赛名称
+   - os_choice: 选择操作系统镜像 (FROM ubuntu:22.04 等)
+   - description: 竞赛描述
+   - start_time / end_time: 竞赛时间范围
+   - cpu_limit / mem_limit: 每个容器的资源限制
+   - install_docker: 是否在容器内预装 Docker CLI
+   - preset_ids[]: 从题库勾选的预设题目 ID 列表 #}
 <div class="modal fade" id="createCompModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('admin.create_competition') }}">
+            <form method="POST" action="{{ url_for('admin.create_competition') }}" id="createCompForm" onsubmit="return showCreateLoading()">
                 <div class="modal-header"><h5 class="modal-title">创建新竞赛</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
+                    {# 名称 + 操作系统选择 #}
                     <div class="row mb-3">
                         <div class="col-8"><label class="form-label">竞赛名称 *</label><input type="text" class="form-control" name="name" required placeholder="例：云计算技能大赛"></div>
                         <div class="col-4">
                             <label class="form-label">系统选择</label>
                             <select class="form-select" name="os_choice" id="compOsChoice">
-                                {% for os_name in ['Ubuntu 22.04', 'Ubuntu 20.04', 'CentOS 7', 'Debian 12', 'Rocky Linux 9'] %}
+                                {% for os_name in ['Ubuntu 22.04', 'Ubuntu 20.04', 'Debian 12'] %}
                                 <option value="{{ os_name }}" {{ 'selected' if os_name == 'Ubuntu 22.04' }}>{{ os_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                     </div>
                     <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2" placeholder="竞赛规则和说明"></textarea></div>
+                    {# 时间范围 #}
                     <div class="row mb-3">
                         <div class="col-6"><label class="form-label">开始时间</label><input type="datetime-local" class="form-control" name="start_time"></div>
                         <div class="col-6"><label class="form-label">结束时间</label><input type="datetime-local" class="form-control" name="end_time"></div>
                     </div>
+                    {# 资源限制 #}
                     <div class="row mb-3">
                         <div class="col-6"><label class="form-label">CPU 限制 (核)</label><input type="number" step="0.1" class="form-control" name="cpu_limit" value="0.5"></div>
                         <div class="col-6"><label class="form-label">内存限制</label><input type="text" class="form-control" name="mem_limit" value="512m"></div>
                     </div>
-                    <!-- Docker Switch -->
+
+                    {# Docker CLI 安装开关 #}
                     <div class="d-flex align-items-center justify-content-between mb-3 p-2 rounded border">
                         <div>
                             <i class="bi bi-box me-1"></i>
@@ -125,7 +155,8 @@
                         </div>
                     </div>
 
-                    <!-- Preset Selector (Collapsible) -->
+                    {# ══ 题库预设选择（可折叠） ══
+                       勾选的题目将自动添加到此竞赛并构建 Docker 镜像 #}
                     <div class="mb-3">
                         <button class="btn btn-outline-secondary btn-sm w-100" type="button" data-bs-toggle="collapse" data-bs-target="#presetCollapse" aria-expanded="false">
                             <i class="bi bi-journal-bookmark-fill me-1"></i> 从题库选择题目
@@ -157,8 +188,13 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">创建竞赛并添加题目</button>
+                    <button type="submit" class="btn btn-primary" id="createCompSubmitBtn">创建竞赛并添加题目</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                </div>
+                {# 加载遮罩：提交后显示，防止重复点击 #}
+                <div class="loading-overlay" id="createCompLoading" style="display:none;">
+                    <div class="spinner"></div>
+                    <div class="loading-text">正在创建中，稍等…</div>
                 </div>
             </form>
         </div>
@@ -166,11 +202,13 @@
 </div>
 
 <script>
+// ── 全选 / 取消全选题库预设 ──
 function toggleAllPresets(el) {
     const checks = document.querySelectorAll('.comp-preset-check');
     checks.forEach(cb => cb.checked = el.checked);
     updatePresetCount();
 }
+// ── 更新已选预设计数徽章 ──
 function updatePresetCount() {
     const count = document.querySelectorAll('.comp-preset-check:checked').length;
     const badge = document.getElementById('presetCount');
@@ -178,6 +216,14 @@ function updatePresetCount() {
         badge.textContent = count;
         badge.className = count > 0 ? 'badge bg-primary ms-1' : 'badge bg-secondary ms-1';
     }
+}
+// ── 提交时显示加载遮罩，防止重复提交 ──
+function showCreateLoading() {
+    const overlay = document.getElementById('createCompLoading');
+    const btn = document.getElementById('createCompSubmitBtn');
+    if (overlay) overlay.style.display = 'flex';
+    if (btn) { btn.disabled = true; btn.textContent = '创建中…'; }
+    return true;
 }
 document.addEventListener('DOMContentLoaded', updatePresetCount);
 </script>

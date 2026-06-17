@@ -1,26 +1,50 @@
 {% extends "base.html" %}
+{# 题库页面 —— 展示所有预设题目，管理员可在此创建新题目 #}
 {% block title %}题库{% endblock %}
 
 {% block content %}
+<!-- ═══════════ 面包屑导航 ═══════════ -->
+<!-- 显示当前页面路径，方便用户了解所在位置 -->
 <div class="breadcrumb-bar">
     <span>题库</span>
 </div>
 
+<!-- ═══════════ 页面标题栏 ═══════════ -->
+<!-- 左侧显示页面标题和图标，右侧显示题目总数和创建按钮（仅管理员可见） -->
 <div class="page-header">
     <h4><i class="bi bi-journal-bookmark-fill"></i> 预设题目</h4>
-    <span class="text-muted small">共 {{ presets|length }} 道题目</span>
+    <div class="d-flex align-items-center gap-2">
+        {# 使用 Jinja2 的 length 过滤器统计预设题目总数 #}
+        <span class="text-muted small">共 {{ presets|length }} 道题目</span>
+        {# 仅管理员角色可见创建题目按钮 #}
+        {% if current_user and current_user.role == 'admin' %}
+        <!-- 点击按钮弹出 Bootstrap 模态框 #createPresetModal -->
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createPresetModal">
+            <i class="bi bi-plus-lg"></i> 创建题目
+        </button>
+        {% endif %}
+    </div>
 </div>
 
+<!-- ═══════════ 题目卡片网格 ═══════════ -->
+<!-- 使用 Bootstrap 栅格系统，响应式排列：md 下两列、lg 下三列 -->
+<!-- 每张卡片展示一道预设题目的标题、难度、描述和分类 -->
 <div class="row g-3">
+    {# 遍历后端传入的 presets 列表，每个 p 是一个 Preset 对象 #}
     {% for p in presets %}
     <div class="col-md-6 col-lg-4">
+        <!-- h-100 使同一行卡片高度一致，d-flex flex-column 使内容垂直排列 -->
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
+                <!-- 卡片顶部：标题 + 难度标签 -->
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <h6 class="card-title mb-0">{{ p.title }}</h6>
+                    {# 根据难度级别显示不同颜色的标签：基础=绿色，进阶=黄色 #}
                     <span class="badge {% if p.difficulty == '基础' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ p.difficulty }}</span>
                 </div>
+                <!-- 题目描述文本，flex-grow-1 使其占据剩余空间将分类推到底部 -->
                 <p class="text-muted small mb-3 flex-grow-1">{{ p.description }}</p>
+                <!-- 卡片底部：分类标签 -->
                 <div>
                     <span class="badge bg-primary bg-opacity-75 me-1 mb-1">{{ p.category }}</span>
                 </div>
@@ -29,4 +53,155 @@
     </div>
     {% endfor %}
 </div>
+
+{# ═══════════ 创建题目模态框（仅管理员可见） ═══════════ #}
+{% if current_user and current_user.role == 'admin' %}
+<!-- ═══════════ CREATE PRESET MODAL ═══════════ -->
+<!--
+  功能：管理员通过此表单创建新的预设竞赛题目
+  提交方式：POST 到 Flask 路由 create_preset
+  包含字段：标题、分类、难度、操作系统、描述、登录信息、判题方式/配置、Dockerfile
+ -->
+<div class="modal fade" id="createPresetModal" tabindex="-1">
+    <!-- modal-lg 使模态框更宽，容纳多列表单 -->
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <!-- 表单以 POST 方式提交到后端 create_preset 路由 -->
+            <form method="POST" action="{{ url_for('create_preset') }}">
+                <!-- 模态框头部：标题 + 关闭按钮 -->
+                <div class="modal-header"><h5 class="modal-title">添加新题库题目</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <!-- ═══════ 第一行：标题 / 分类 / 难度 / 操作系统 ═══════ -->
+                    <div class="row mb-3">
+                        <!-- 题目标题（必填）—— 如 "Nginx 服务搭建" -->
+                        <div class="col-4"><label class="form-label">题目标题 *</label><input type="text" class="form-control" name="title" required placeholder="例：Nginx 服务搭建"></div>
+                        <!-- 分类（选填）—— 如 "OpenStack"，默认值 "自定义" -->
+                        <div class="col-2"><label class="form-label">分类</label><input type="text" class="form-control" name="category" value="自定义" placeholder="如：OpenStack"></div>
+                        <!-- 难度下拉框：基础 / 进阶 -->
+                        <div class="col-2"><label class="form-label">难度</label>
+                            <select class="form-select" name="difficulty">
+                                <option value="基础">基础</option>
+                                <option value="进阶">进阶</option>
+                            </select>
+                        </div>
+                        <!-- 操作系统选择器 —— 切换时自动更新 Dockerfile 的 FROM 行 -->
+                        <div class="col-4">
+                            <label class="form-label">操作系统</label>
+                            <select class="form-select" id="presetOsSelector" onchange="applyOsToPresetDockerfile()">
+                                <option value="Ubuntu 22.04">Ubuntu 22.04</option>
+                                <option value="Ubuntu 20.04">Ubuntu 20.04</option>
+                                <option value="Debian 12">Debian 12</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- ═══════ 题目描述（多行文本） ═══════ -->
+                    <div class="mb-3">
+                        <label class="form-label">题目描述</label>
+                        <textarea class="form-control" name="description" rows="2" placeholder="选手需要完成的任务说明"></textarea>
+                    </div>
+                    <!-- ═══════ 登录信息（选填） ═══════ -->
+                    <!-- 用于给选手展示容器的 SSH 登录凭据 -->
+                    <div class="mb-2">
+                        <label class="form-label">登录信息 <small class="text-muted">（如：SSH root / password）</small></label>
+                        <input type="text" class="form-control form-control-sm" name="login_info" placeholder="留空则不显示。例：SSH 用户名 root 密码 password">
+                    </div>
+                    <!-- ═══════ 判题方式配置 ═══════ -->
+                    <!-- judge_type: 端口检测(port) / 命令执行(command) / 文件检测(file)
+                         judge_config: 对应判题类型的 JSON 配置，如 {"port":80} -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">判题方式</label>
+                            <select class="form-select" name="judge_type">
+                                <option value="port">端口检测</option>
+                                <option value="command">命令执行</option>
+                                <option value="file">文件检测</option>
+                            </select>
+                        </div>
+                        <div class="col-6"><label class="form-label">判题配置 (JSON)</label><input type="text" class="form-control" name="judge_config" value='{"port": 80}' placeholder='{"port":80}'></div>
+                    </div>
+                    <!-- ═══════ 模板选择器 ═══════ -->
+                    <!-- 从预定义的 Dockerfile 模板中选择一个，选中后自动填充下方 Dockerfile 编辑区 -->
+                    <div class="mb-3">
+                        <label class="form-label">使用模板（可选）</label>
+                        <select class="form-select" name="template_name" id="presetTemplateSelector" onchange="applyTemplateToPreset()">
+                            <option value="">— 手动编写下方 Dockerfile —</option>
+                            {# 遍历后端传入的 templates 列表 #}
+                            {% for tpl in templates %}
+                            <option value="{{ tpl.name }}">{{ tpl.name }} — {{ tpl.description }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <!-- ═══════ Dockerfile 编辑区 ═══════ -->
+                    <!-- 管理员可直接编辑构建容器镜像的 Dockerfile 内容 -->
+                    <div class="mb-3">
+                        <label class="form-label">Dockerfile</label>
+                        <textarea class="form-control dockerfile-editor" name="dockerfile_content" id="presetDockerfile" rows="8" spellcheck="false" placeholder="FROM ubuntu:22.04&#10;RUN apt-get update && apt-get install -y nginx&#10;EXPOSE 80&#10;CMD [&quot;/bin/bash&quot;, &quot;-c&quot;, &quot;tail -f /dev/null&quot;]"></textarea>
+                    </div>
+                </div>
+                <!-- 模态框底部按钮 -->
+                <div class="modal-footer">
+                    <!-- 提交表单，将数据 POST 到 create_preset 路由 -->
+                    <button type="submit" class="btn btn-primary">创建题目</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{# ═══════════ 页面专属 JavaScript（仅管理员加载） ═══════════ #}
+{% block extra_scripts %}
+{% if current_user and current_user.role == 'admin' %}
+<script>
+// ═══════════ 操作系统名称 → Docker 镜像映射表 ═══════════
+// 当用户切换操作系统下拉框时，用此映射更新 Dockerfile 的 FROM 指令
+const OS_IMAGES = {
+    'Ubuntu 22.04': 'ubuntu:22.04',
+    'Ubuntu 20.04': 'ubuntu:20.04',
+    'Debian 12': 'debian:12',
+};
+
+/**
+ * 将用户选择的操作系统应用到 Dockerfile 编辑器中
+ * 通过正则替换 FROM 行来更新基础镜像
+ * 由 presetOsSelector 下拉框的 onchange 事件触发
+ */
+function applyOsToPresetDockerfile() {
+    // 获取用户选择的操作系统名称
+    const osChoice = document.getElementById('presetOsSelector').value;
+    // 从映射表中查找对应的 Docker 镜像，默认使用 ubuntu:22.04
+    const osImage = OS_IMAGES[osChoice] || 'ubuntu:22.04';
+    const ta = document.getElementById('presetDockerfile');
+    // 使用正则替换：将 "FROM xxx" 行替换为新的基础镜像
+    ta.value = ta.value.replace(/FROM .+/, 'FROM ' + osImage);
+}
+
+/**
+ * 后端 API 路径：GET /admin/templates/<template_name>/dockerfile
+ * 功能：根据用户选择的模板名称，从后端获取对应的 Dockerfile 内容并填入编辑器
+ * 然后将当前选中的操作系统应用到模板的 FROM 行
+ * 由 presetTemplateSelector 下拉框的 onchange 事件触发
+ */
+async function applyTemplateToPreset() {
+    const sel = document.getElementById('presetTemplateSelector');
+    // 如果选择了占位选项（空值），不执行任何操作
+    if (!sel.value) return;
+    try {
+        // 调用后端 API：GET /admin/templates/<模板名>/dockerfile
+        // 后端返回 JSON: { dockerfile: "..." }
+        const resp = await fetch('/admin/templates/' + sel.value + '/dockerfile');
+        if (!resp.ok) throw new Error('获取模板失败');
+        const data = await resp.json();
+        // 将获取到的 Dockerfile 内容填入编辑器
+        document.getElementById('presetDockerfile').value = data.dockerfile || '';
+        // 将当前选择的操作系统应用到模板的 FROM 行
+        applyOsToPresetDockerfile();
+    } catch (e) {
+        console.error(e);
+    }
+}
+</script>
+{% endif %}
 {% endblock %}

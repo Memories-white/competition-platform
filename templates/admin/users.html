@@ -1,71 +1,185 @@
+<!--
+  管理后台 - 用户管理页面
+  ---------------------------------------------------------------------------
+  页面用途：管理员在此页面查看所有注册用户列表，创建新的选手账号，
+           重置选手密码（恢复为默认密码 player123），以及删除非管理员用户。
+  数据来源：后端传入 users（用户对象列表），每个用户含 id、username、role、
+           team_name、created_at 等字段。
+  路由对应：
+    - 列表查看：admin.users（GET）
+    - 创建用户：admin.create_user（POST，由弹窗表单提交）
+    - 重置密码：admin.reset_password（POST，每行操作按钮的表单）
+    - 删除用户：admin.delete_user（POST，每行操作按钮的表单）
+-->
 {% extends "base.html" %}
+{# 继承基础模板 base.html #}
 {% block title %}用户管理{% endblock %}
+{# 浏览器标签页标题 #}
 
 {% block content %}
+{# 主体内容区域 #}
+
+<!-- ==================== 页面标题栏 ==================== -->
 <div class="page-header">
     <h4><i class="bi bi-people"></i> 用户管理</h4>
+    <!-- 人物图标 + 页面主标题 -->
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
         <i class="bi bi-person-plus"></i> 创建选手
     </button>
+    <!--
+      "创建选手" 按钮：使用 Bootstrap 5 的 data-bs-toggle="modal" 属性，
+      点击后弹出 id="createUserModal" 的模态框（页面底部定义）。
+    -->
 </div>
 
+<!-- ==================== 用户列表表格 ==================== -->
 <div class="card">
     <div class="table-responsive">
+        <!-- table-responsive：当屏幕较窄时表格可水平滚动 -->
         <table class="table table-hover mb-0">
+            <!-- table-hover：鼠标悬停行高亮；mb-0：移除表格底部外边距 -->
             <thead>
-                <tr><th>ID</th><th>用户名</th><th>角色</th><th>队伍</th><th>创建时间</th><th>操作</th></tr>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>队伍</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
             </thead>
             <tbody>
                 {% for u in users %}
+                {# 遍历后端传入的 users 列表，u 为单个用户对象 #}
                 <tr>
+                    <!-- 用户 ID（数据库主键） -->
                     <td>{{ u.id }}</td>
+
+                    <!-- 用户名：加粗显示 -->
                     <td><strong>{{ u.username }}</strong></td>
-                    <td><span class="badge bg-{{ 'primary' if u.role=='admin' else 'info' }}">{{ '管理员' if u.role=='admin' else '选手' }}</span></td>
+
+                    <!-- 角色标签：
+                         admin 角色显示蓝色 "管理员" 徽章，
+                         其他角色（选手）显示青色 "选手" 徽章 -->
+                    <td>
+                        <span class="badge bg-{{ 'primary' if u.role=='admin' else 'info' }}">
+                            {{ '管理员' if u.role=='admin' else '选手' }}
+                        </span>
+                    </td>
+
+                    <!-- 队伍名称：若无队伍则显示 "-" -->
                     <td>{{ u.team_name or '-' }}</td>
+
+                    <!-- 创建时间：格式化为 "年-月-日 时:分"，若无则显示 "-" -->
                     <td class="small text-muted">{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+
+                    <!-- 操作列 -->
                     <td>
                         {% if u.role != 'admin' %}
-                        <form method="POST" action="{{ url_for('admin.reset_password', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('确定重置该用户密码为 player123 吗？')">
-                            <button class="btn btn-warning btn-sm" title="重置密码"><i class="bi bi-key"></i></button>
+                        {# 仅对非管理员用户显示操作按钮，管理员账号不可被重置或删除 #}
+
+                        <!-- 重置密码表单（POST 提交） -->
+                        <form method="POST" action="{{ url_for('admin.reset_password', user_id=u.id) }}"
+                              class="d-inline"
+                              onsubmit="return confirm('确定重置该用户密码为 player123 吗？')">
+                            {# url_for 生成路由：/admin/users/<user_id>/reset-password #}
+                            {# onsubmit：提交前弹出确认对话框，防止误操作 #}
+                            <button class="btn btn-warning btn-sm" title="重置密码">
+                                <i class="bi bi-key"></i>
+                                <!-- 钥匙图标：表示密码相关操作 -->
+                            </button>
                         </form>
-                        <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('确定删除此用户及所有关联数据？')">
-                            <button class="btn btn-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
+
+                        <!-- 删除用户表单（POST 提交） -->
+                        <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+                              class="d-inline"
+                              onsubmit="return confirm('确定删除此用户及所有关联数据？')">
+                            {# url_for 生成路由：/admin/users/<user_id>/delete #}
+                            {# onsubmit：再次确认，因为删除会连带清除其所有关联数据（成绩、环境等） #}
+                            <button class="btn btn-danger btn-sm" title="删除">
+                                <i class="bi bi-trash"></i>
+                                <!-- 垃圾桶图标：表示删除操作 -->
+                            </button>
                         </form>
+
                         {% else %}
+                        {# admin 角色的用户不显示操作按钮，显示占位符 #}
                         <span class="text-muted small">—</span>
                         {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
+                {# 循环结束 #}
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- Create User Modal -->
+<!--
+  ==================== 创建用户模态框 ====================
+  功能：弹出式表单，管理员填写用户名、密码（默认 player123）、队伍名称，
+        通过 POST 提交到 admin.create_user 路由创建新选手账号。
+  触发方式：点击页面标题栏的 "创建选手" 按钮（data-bs-target="#createUserModal"）。
+  Bootstrap 类说明：
+    - modal fade：模态框容器，fade 提供淡入淡出动画
+    - modal-dialog：弹窗对话框（默认宽度）
+    - modal-content：弹窗内容面板
+    - modal-header / modal-body / modal-footer：弹窗的三段式布局
+-->
 <div class="modal fade" id="createUserModal" tabindex="-1">
+    <!-- tabindex="-1" 使模态框不参与 Tab 键导航顺序 -->
     <div class="modal-dialog">
         <div class="modal-content">
+            <!-- 表单提交目标：admin.create_user 路由 -->
             <form method="POST" action="{{ url_for('admin.create_user') }}">
-                <div class="modal-header"><h5 class="modal-title">创建选手账号</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                {# 表单数据以 POST 方式发送到后端创建用户接口 #}
+
+                <!-- 弹窗头部：标题 + 关闭按钮 -->
+                <div class="modal-header">
+                    <h5 class="modal-title">创建选手账号</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <!-- data-bs-dismiss="modal" 点击关闭按钮隐藏弹窗 -->
+                </div>
+
+                <!-- 弹窗主体：表单输入字段 -->
                 <div class="modal-body">
+                    <!-- 字段1：用户名（必填） -->
                     <div class="mb-3">
                         <label class="form-label">用户名 *</label>
-                        <input type="text" class="form-control" name="username" required placeholder="选手登录名">
+                        <!-- "*" 表示必填项 -->
+                        <input type="text" class="form-control" name="username" required
+                               placeholder="选手登录名">
+                        <!-- required 属性：浏览器端必填校验 -->
+                        <!-- name="username"：表单字段名，后端通过 request.form['username'] 获取 -->
                     </div>
+
+                    <!-- 字段2：密码（必填，默认值 player123） -->
                     <div class="mb-3">
                         <label class="form-label">密码 *</label>
-                        <input type="text" class="form-control" name="password" value="player123" required>
+                        <input type="text" class="form-control" name="password"
+                               value="player123" required>
+                        <!-- type="text" 而非 "password"：方便管理员查看默认密码 -->
+                        <!-- value="player123"：预设默认密码，管理员可修改 -->
                         <small class="text-muted">默认密码 player123</small>
+                        <!-- 提示文字：告知管理员默认密码值 -->
                     </div>
+
+                    <!-- 字段3：队伍名称（选填） -->
                     <div class="mb-3">
                         <label class="form-label">队伍名称</label>
-                        <input type="text" class="form-control" name="team_name" placeholder="例：云计算先锋队">
+                        <input type="text" class="form-control" name="team_name"
+                               placeholder="例：云计算先锋队">
+                        <!-- 无 required 属性：队伍名称为可选字段 -->
+                        <!-- placeholder 给出示例，引导管理员填写 -->
                     </div>
                 </div>
+
+                <!-- 弹窗底部：操作按钮 -->
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary">创建</button>
+                    <!-- type="submit"：点击后提交表单到 admin.create_user -->
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <!-- type="button" 避免按钮默认提交行为；点击关闭弹窗不提交 -->
                 </div>
             </form>
         </div>

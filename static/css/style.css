@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════
-   CloudComp Platform — UI Design System
+   云计算竞赛系统 — UI 设计系统
    Swiss Modern × Glass — 2026
    ═══════════════════════════════════════════════ */
 
-/* ── Tokens ── */
+/* ── 设计令牌 ── */
 :root {
     --c-brand:        #6366F1;
     --c-brand-light:  #818CF8;
@@ -35,7 +35,7 @@
     --t-theme:        300ms ease;
 }
 
-/* ── Dark Theme ── */
+/* ── 深色主题 ── */
 [data-theme="dark"] {
     --c-bg:           #0F172A;
     --c-surface:      #1E293B;
@@ -74,7 +74,7 @@
     --bs-table-hover-color: #E2E8F0;
 }
 
-/* ── Reset & Base ── */
+/* ── 重置与基础 ── */
 body {
     background: var(--c-bg);
     font-family: "Fira Sans", system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
@@ -84,7 +84,7 @@ body {
     transition: background var(--t-theme), color var(--t-theme);
 }
 
-/* ── Sidebar ── */
+/* ── 侧边栏 ── */
 .sidebar {
     position: fixed; top: 0; left: 0; bottom: 0;
     width: var(--sidebar-w);
@@ -183,14 +183,14 @@ body {
     border-color: rgba(255,255,255,.15);
 }
 
-/* ── Main Content ── */
+/* -- 主内容区 -- */
 .main-content {
     margin-left: var(--sidebar-w);
     padding: 32px 36px 48px;
     min-height: 100vh;
 }
 
-/* ── Page Header ── */
+/* -- 页面头部 -- */
 .page-header {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 28px;
@@ -201,7 +201,7 @@ body {
 }
 .page-header h4 i { color: var(--c-brand); }
 
-/* ── Breadcrumb ── */
+/* -- 面包屑 -- */
 .breadcrumb-bar {
     display: flex; align-items: center; gap: 8px;
     font-size: .82rem; color: var(--c-text-soft);
@@ -212,7 +212,7 @@ body {
 }
 .breadcrumb-bar a:hover { color: var(--c-brand); }
 
-/* ── Cards ── */
+/* -- 卡片 -- */
 .card {
     background: var(--c-surface);
     border: 1px solid var(--c-border);
@@ -229,7 +229,7 @@ body {
 }
 .card-body { padding: 20px; }
 
-/* Stat Cards */
+/* 统计卡片 */
 .stat-card {
     border: 1px solid var(--c-border);
     border-radius: var(--radius);
@@ -256,7 +256,7 @@ body {
     margin-top: 2px;
 }
 
-/* ── Buttons ── */
+/* -- 按钮 -- */
 .btn {
     border-radius: var(--radius-sm); font-weight: 500;
     padding: 8px 16px; font-size: .85rem;
@@ -279,14 +279,14 @@ body {
 }
 .btn-sm { padding: 5px 12px; font-size: .8rem; }
 
-/* ── Badges ── */
+/* -- 徽章 -- */
 .badge {
     font-weight: 500; letter-spacing: .01em;
     padding: .35em .65em;
 }
 .bg-primary { background: var(--c-brand) !important; }
 
-/* ── Tabs ── */
+/* -- 选项卡 -- */
 .nav-pills .nav-link {
     color: var(--c-text-soft); border-radius: var(--radius-sm);
     padding: 8px 20px; font-weight: 500; font-size: .85rem;
@@ -295,7 +295,7 @@ body {
 .nav-pills .nav-link:hover { background: var(--c-brand-bg); color: var(--c-brand); }
 .nav-pills .nav-link.active { background: var(--c-brand); color: #fff; }
 
-/* ── Tables ── */
+/* -- 表格 -- */
 .table {
     margin: 0;
     --bs-table-hover-bg: #F1F5F9;
@@ -311,7 +311,7 @@ body {
 .table tbody tr:last-child td { border-bottom: none; }
 .code-tag { font-family: "Fira Code", monospace; font-size: .78rem; background: #F1F5F9; padding: 3px 8px; border-radius: 4px; }
 
-/* Scoreboard */
+/* 排行榜 */
 .scoreboard-table thead th {
     background: var(--c-brand); color: #fff;
     border: none; font-size: .78rem;
@@ -322,7 +322,7 @@ body {
 .rank-bronze { background: #FFF7ED !important; }
 .rank-medal { font-size: 1.3rem; }
 
-/* ── Deploy Log ── */
+/* -- 部署日志 -- */
 .deploy-log {
     background: #0F172A; color: #818CF8;
     font-family: "Fira Code", monospace;
@@ -335,7 +335,7 @@ body {
 .deploy-log .info    { color: #60A5FA; }
 .deploy-log .warning { color: #FBBF24; }
 
-/* ── Dockerfile Editor ── */
+/* -- Dockerfile 编辑器 -- */
 .dockerfile-editor {
     font-family: "Fira Code", monospace;
     font-size: .83rem; background: #0F172A;
@@ -344,7 +344,7 @@ body {
     line-height: 1.6; padding: 14px;
 }
 
-/* ── Modals ── */
+/* -- 弹窗 -- */
 .modal-content {
     border-radius: var(--radius-lg); border: none;
     box-shadow: var(--shadow-lg);
@@ -360,7 +360,7 @@ body {
 .modal-header .modal-title { font-weight: 700; font-size: 1rem; }
 .modal-footer { border-top: 1px solid var(--c-border); padding: 16px 20px; }
 
-/* ── Form Controls ── */
+/* -- 表单控件 -- */
 .form-control, .form-select {
     border-radius: var(--radius-sm); border-color: var(--c-border);
     font-size: .86rem; padding: 8px 12px;
@@ -372,26 +372,26 @@ body {
 }
 .form-label { font-weight: 500; font-size: .85rem; color: var(--c-text); margin-bottom: 4px; }
 
-/* ── Alerts ── */
+/* -- 提示 -- */
 .alert {
     border-radius: var(--radius); border: none;
     box-shadow: var(--shadow-sm); font-size: .88rem;
 }
 
-/* ── Empty State ── */
+/* -- 空状态 -- */
 .empty-state {
     text-align: center; padding: 48px 20px; color: var(--c-text-soft);
 }
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; color: var(--c-text-muted); }
 
-/* ── Login / Register ── */
+/* -- 登录 / 注册 -- */
 .auth-page { background: linear-gradient(135deg, #111827 0%, #1E1B4B 100%); min-height: 100vh; }
 .auth-card {
     background: var(--c-surface); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg); padding: 40px;
 }
 
-/* ── Theme Toggle ── */
+/* -- 主题切换 -- */
 .sidebar-theme-toggle {
     flex-shrink: 0;
     padding: 8px 16px;
@@ -415,7 +415,7 @@ body {
     border-color: rgba(255,255,255,.2);
 }
 
-/* ── Progress ── */
+/* -- 进度条 -- */
 .progress-indicator {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 16px; border-radius: var(--radius-sm);
@@ -431,7 +431,7 @@ body {
     50% { opacity: .3; }
 }
 
-/* ── Collapse & Form Switch ── */
+/* -- 折叠与开关 -- */
 [data-bs-toggle="collapse"][aria-expanded="true"] .collapse-icon {
     transform: rotate(180deg);
 }
@@ -441,7 +441,29 @@ body {
     cursor: pointer;
 }
 
-/* ── Responsive ── */
+/* -- 加载遮罩 -- */
+.loading-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px;
+}
+.loading-overlay .spinner {
+    width: 48px; height: 48px;
+    border: 4px solid rgba(255,255,255,.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+}
+.loading-overlay .loading-text {
+    color: #fff; font-size: .95rem; font-weight: 500;
+    letter-spacing: .02em;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* -- 响应式 -- */
 @media (max-width: 768px) {
     .sidebar { width: 56px; }
     .sidebar-brand span,

@@ -1,7 +1,12 @@
+<!--
+  环境管理页（特定竞赛）
+  列出竞赛下所有选手的环境实例，管理员可在此对单个环境执行启动/停止/删除操作。
+-->
 {% extends "base.html" %}
 {% block title %}{{ competition.name }} - 环境管理{% endblock %}
 
 {% block content %}
+{# ══════ 面包屑导航 ══════ #}
 <div class="breadcrumb-bar">
     <a href="{{ url_for('admin.competitions') }}">竞赛管理</a>
     <span>/</span>
@@ -10,11 +15,17 @@
     <span>环境管理</span>
 </div>
 
+{# ══════ 页面标题 ══════ #}
 <div class="page-header">
     <h4><i class="bi bi-hdd-stack"></i> 环境实例</h4>
     <a href="{{ url_for('admin.competition_detail', comp_id=competition.id) }}" class="btn btn-outline-primary btn-sm">&larr; 返回</a>
 </div>
 
+{# ══════ 环境实例表格 ══════
+   列布局：选手 | 队伍 | 题目 | 容器名 | 端口 | 状态 | 操作按钮
+   - environments: 当前竞赛下所有 Environment 记录（含关联的用户名/队伍/题目标题）
+   - 每行右侧三个操作按钮：启动（绿色▶）、停止（黄色■）、删除（红色🗑）
+   - 操作提交到 admin.environment_action 路由，传入 env_id 和 action（start/stop/remove） #}
 {% if environments %}
 <div class="card">
     <div class="table-responsive">
@@ -30,11 +41,15 @@
                     <td>{{ env.challenge_title }}</td>
                     <td><code class="code-tag">{{ env.container_name }}</code></td>
                     <td>{{ env.host_port or '-' }}</td>
+                    {# 状态中文映射：running→运行（绿），stopped→停止（黄），pending→等待（灰） #}
                     <td><span class="badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">{{ {'running':'运行','stopped':'停止','pending':'等待'}.get(env.status, env.status) }}</span></td>
                     <td class="text-end">
                         <div class="d-flex gap-1 justify-content-end">
+                            {# 启动按钮 → POST environment_action(env_id, action='start') #}
                             <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='start') }}"><button class="btn btn-success btn-sm"><i class="bi bi-play-fill"></i></button></form>
+                            {# 停止按钮 → POST environment_action(env_id, action='stop') #}
                             <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='stop') }}"><button class="btn btn-warning btn-sm"><i class="bi bi-stop-fill"></i></button></form>
+                            {# 删除按钮：带二次确认 → POST environment_action(env_id, action='remove') #}
                             <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='remove') }}" onsubmit="return confirm('确定删除？')"><button class="btn btn-danger btn-sm"><i class="bi bi-trash"></i></button></form>
                         </div>
                     </td>
@@ -45,6 +60,7 @@
     </div>
 </div>
 {% else %}
+{# 无数据时的空状态提示 #}
 <div class="empty-state"><p>暂无环境实例</p></div>
 {% endif %}
 {% endblock %}

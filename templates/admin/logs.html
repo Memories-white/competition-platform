@@ -1,63 +1,174 @@
+<!--
+  管理后台 - 系统日志页面
+  ---------------------------------------------------------------------------
+  页面用途：以实时刷新的方式展示后台操作日志，管理员可按级别（INFO/WARNING/
+           ERROR/DEBUG）过滤，并切换自动刷新开关。
+  数据来源：通过 AJAX 异步请求 GET /admin/logs/data?limit=200&level=<级别>
+           返回 JSON：{ "logs": [ { "time", "level", "name", "msg" }, ... ] }
+  路由对应：
+    - 页面视图：admin.logs（GET，渲染本模板）
+    - 数据接口：admin.logs_data（GET，返回 JSON 日志数据）
+  前端行为：
+    - 页面加载后立即拉取日志并开启 3 秒自动刷新定时器
+    - 日志级别下拉框变化时重新拉取日志
+    - 自动刷新开关切换时启动/停止定时器
+    - 日志容器自动滚动到底部（跟随最新日志）
+-->
 {% extends "base.html" %}
+{# 继承基础模板 #}
 {% block title %}系统日志{% endblock %}
+{# 浏览器标签页标题 #}
 
 {% block content %}
+{# 主体内容区域 #}
+
+<!-- ==================== 页面标题栏（含过滤控件） ==================== -->
 <div class="page-header">
     <h4><i class="bi bi-journal-text"></i> 系统日志</h4>
+    <!-- 日记本图标 + 标题 -->
+
     <div class="d-flex align-items-center gap-2">
+        <!--
+          日志级别过滤下拉框
+          选择特定级别（INFO/WARNING/ERROR/DEBUG）后立即触发 fetchLogs() 重新拉取，
+          选择"全部级别"则不过滤。
+        -->
         <select id="levelFilter" class="form-select" style="width:auto;">
+            <!-- width:auto 使下拉框宽度自适应内容 -->
             <option value="">全部级别</option>
+            <!-- value="" 表示不传 level 参数，后端返回所有级别的日志 -->
             <option value="INFO">INFO</option>
+            <!-- 一般信息日志，记录正常操作 -->
             <option value="WARNING">WARNING</option>
+            <!-- 警告日志，记录非致命但需关注的事件 -->
             <option value="ERROR">ERROR</option>
+            <!-- 错误日志，记录操作失败或系统异常 -->
             <option value="DEBUG">DEBUG</option>
+            <!-- 调试日志，记录详细调试信息 -->
         </select>
+
+        <!--
+          自动刷新开关（Bootstrap 5 开关式复选框）
+          默认勾选（checked），页面加载后即启动 3 秒定时器。
+          取消勾选则停止定时器，手动点击刷新按钮可拉取。
+        -->
         <div class="form-check form-switch d-flex align-items-center ms-1">
+            <!-- form-switch 使复选框显示为开关滑块样式 -->
             <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
             <label class="form-check-label small" for="autoRefresh">自动刷新</label>
         </div>
+
+        <!-- 手动刷新按钮 -->
         <button class="btn btn-outline-primary btn-sm" onclick="fetchLogs()">
             <i class="bi bi-arrow-clockwise"></i>
+            <!-- 循环箭头图标，表示刷新 -->
         </button>
     </div>
 </div>
 
+<!-- ==================== 日志展示区域 ==================== -->
 <div class="card">
-    <div id="logContainer" class="deploy-log" style="display:block;max-height:70vh;overflow-y:auto;border-radius:var(--radius);">
+    <!--
+      logContainer：日志内容的渲染目标容器
+      - display:block 覆盖 deploy-log 可能的默认隐藏样式
+      - max-height:70vh 限制最大高度为视口 70%，超出后内部滚动
+      - overflow-y:auto 内容超出时显示垂直滚动条
+    -->
+    <div id="logContainer" class="deploy-log"
+         style="display:block;max-height:70vh;overflow-y:auto;border-radius:var(--radius);">
+        <!-- 初始占位内容：在 AJAX 请求完成前显示 -->
         <div class="text-center py-5 text-muted">加载中...</div>
     </div>
+
+    <!-- 卡片底部状态栏 -->
     <div class="card-footer d-flex justify-content-between small text-muted">
+        <!-- 左侧：当前显示的日志条数 -->
         <span id="logCount">0 条日志</span>
+        <!-- 右侧：说明文字（最多 200 条，每 3 秒自动刷新） -->
         <span>最近 200 条 · 每 3 秒刷新</span>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+{# extra_scripts 块：base.html 中预留的额外 JavaScript 脚本区域，放在 </body> 前执行 #}
 <script>
+// ================================================================
+// 系统日志页面 - 前端交互脚本
+// ================================================================
+
+// --- DOM 元素缓存 ---
+// 日志内容容器：渲染每条日志的 DOM 元素
 const logContainer = document.getElementById('logContainer');
+// 日志级别下拉框：用户选择过滤级别
 const levelFilter = document.getElementById('levelFilter');
+// 自动刷新开关：复选框元素，控制定时器启停
 const autoRefreshEl = document.getElementById('autoRefresh');
+// 日志计数器：显示当前加载的日志条数
 const logCountEl = document.getElementById('logCount');
+// 自动刷新定时器 ID：用于 clearInterval 停止定时器
 let refreshTimer = null;
 
+/**
+ * fetchLogs - 从后端 API 拉取日志数据
+ * =============================================
+ * 请求 URL：/admin/logs/data?limit=200&level=<级别>
+ *   - limit=200：最多返回 200 条日志
+ *   - level：日志级别过滤（INFO/WARNING/ERROR/DEBUG），空字符串表示不过滤
+ * 响应格式：{ "logs": [ { "time": "...", "level": "...", "name": "...", "msg": "..." }, ... ] }
+ * 成功：调用 renderLogs() 渲染日志列表
+ * 失败：在容器中显示红色错误提示
+ */
 function fetchLogs() {
     const level = levelFilter.value;
+    // encodeURIComponent 确保 level 参数值在 URL 中安全传递（处理特殊字符）
     fetch(`/admin/logs/data?limit=200&level=${encodeURIComponent(level)}`)
         .then(r => r.json())
+        // 解析 JSON 响应
         .then(data => renderLogs(data.logs))
-        .catch(e => { logContainer.innerHTML = `<div class="text-center text-danger py-5">加载失败: ${e.message}</div>`; });
+        // 将日志数组传入渲染函数
+        .catch(e => {
+            // 网络错误或 JSON 解析失败时显示错误提示
+            logContainer.innerHTML = `<div class="text-center text-danger py-5">加载失败: ${e.message}</div>`;
+        });
 }
 
+/**
+ * renderLogs - 将日志数组渲染为 HTML 并展示
+ * =============================================
+ * @param {Array} logs - 日志对象数组，每项包含 time/level/name/msg 字段
+ * 功能：
+ *   - 空数组时显示"暂无日志"占位符
+ *   - 每条日志渲染为一行，按级别应用不同 CSS 类和颜色：
+ *     ERROR  → 红色背景 + 红色级别标签
+ *     WARNING → 黄色背景 + 黄色级别标签
+ *     INFO/DEBUG → 默认背景 + 蓝色级别标签
+ *   - 渲染完成后自动滚动到底部（跟随最新日志）
+ *   - 更新底部日志计数器
+ */
 function renderLogs(logs) {
+    // 空日志处理：显示占位文字，重置计数
     if (!logs.length) {
         logContainer.innerHTML = '<div class="text-center py-5 text-muted">暂无日志</div>';
         logCountEl.textContent = '0 条日志';
         return;
     }
+
+    // 构建 HTML 字符串（一次性拼接后写入 DOM，避免多次 reflow）
     let html = '';
     logs.forEach(log => {
         const lvl = log.level;
+        /*
+         * 每条日志的显示格式（从左到右）：
+         *   [时间] 级别    来源     消息内容
+         * 颜色说明：
+         *   - 时间：灰色 #64748B（Tailwind slate-500）
+         *   - ERROR 级别：红色 #F87171（red-400）
+         *   - WARNING 级别：黄色 #FBBF24（amber-400）
+         *   - INFO/DEBUG 级别：蓝色 #60A5FA（blue-400）
+         *   - 来源名称：灰色 #94A3B8（slate-400）
+         *   - 消息正文：浅灰 #CBD5E1（slate-300），经 escapeHtml 转义防 XSS
+         */
         html += `<div class="${lvl==='ERROR'?'error':lvl==='WARNING'?'warning':'info'}" style="line-height:1.6;">
             <span style="color:#64748B;">[${log.time}]</span>
             <span style="color:${lvl==='ERROR'?'#F87171':lvl==='WARNING'?'#FBBF24':'#60A5FA'};margin-left:8px;">${lvl.padEnd(7)}</span>
@@ -65,29 +176,58 @@ function renderLogs(logs) {
             <span style="margin-left:8px;color:#CBD5E1;">${escapeHtml(log.msg)}</span>
         </div>`;
     });
+
+    // 一次性替换 innerHTML，避免多次 DOM 操作
     logContainer.innerHTML = html;
+    // 将滚动条定位到容器底部，使最新日志始终可见
     logContainer.scrollTop = logContainer.scrollHeight;
+    // 更新底部日志条数显示
     logCountEl.textContent = `${logs.length} 条日志`;
 }
 
+/**
+ * escapeHtml - HTML 特殊字符转义
+ * =============================================
+ * @param {string} text - 原始文本
+ * @returns {string} 转义后的文本（< > & " ' 变为 HTML 实体）
+ * 原理：利用浏览器的 DOM 解析器自动转义，将文本赋值给 textContent，
+ *       再从 innerHTML 读取即可获得转义后的字符串。
+ * 目的：防止日志消息中的 HTML 标签或脚本被浏览器执行（XSS 防护）。
+ */
 function escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    div.textContent = text;  // textContent 不会解析 HTML，安全赋值
+    return div.innerHTML;    // 返回转义后的 HTML 实体字符串
 }
 
+/**
+ * toggleAutoRefresh - 切换自动刷新状态
+ * =============================================
+ * 根据 autoRefreshEl 复选框的选中状态启动或停止定时器：
+ *   - 勾选：启动 setInterval，每 3000 毫秒（3 秒）调用一次 fetchLogs()
+ *   - 取消勾选：clearInterval 停止定时器，日志不再自动更新
+ * 在页面初始化和复选框状态变化时调用。
+ */
 function toggleAutoRefresh() {
     if (autoRefreshEl.checked) {
+        // 启动定时器：每 3 秒拉取一次日志
         refreshTimer = setInterval(fetchLogs, 3000);
     } else {
+        // 停止定时器
         clearInterval(refreshTimer);
     }
 }
 
+// --- 事件绑定 ---
+// 当日志级别下拉框选择变化时，立即重新拉取日志
 levelFilter.addEventListener('change', fetchLogs);
+// 当自动刷新开关状态变化时，启用或停止定时刷新
 autoRefreshEl.addEventListener('change', toggleAutoRefresh);
 
+// --- 页面初始化 ---
+// 1. 立即执行首次日志拉取，填充页面内容
 fetchLogs();
+// 2. 根据自动刷新开关初始状态（默认勾选）启动定时器
 toggleAutoRefresh();
 </script>
 {% endblock %}

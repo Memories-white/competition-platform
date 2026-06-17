@@ -1,13 +1,30 @@
 {% extends "base.html" %}
+{#
+- 竞赛详情管理页面
+- 用途：管理员管理单个竞赛的题目、环境部署、成绩排名
+- 包含三大 Tab：题目管理、环境部署、成绩排名
+- 支持创建/编辑题目（Docker 实操 + 试卷考试）、一键部署环境、查看成绩
+- 使用 SocketIO 实时推送部署进度
+#}
 {% block title %}{{ competition.name }}{% endblock %}
 
 {% block content %}
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 面包屑导航：竞赛管理 > 当前竞赛名称 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="breadcrumb-bar">
     <a href="{{ url_for('admin.competitions') }}">竞赛管理</a>
     <span>/</span>
     <span>{{ competition.name }}</span>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 页面头部：竞赛名称 + 状态徽章 + 状态切换按钮 -->
+<!-- 状态徽章颜色：active=绿色, draft=灰色, finished=蓝色 -->
+<!-- 中文映射：draft→草稿, active→进行中, finished→已结束 -->
+<!-- 按钮逻辑：草稿→开始竞赛, 进行中→结束竞赛, 已结束→重新打开 -->
+<!-- 表单提交到 update_competition_status 接口切换竞赛状态 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="page-header">
     <h4>
         {{ competition.name }}
@@ -16,6 +33,7 @@
         </span>
     </h4>
     <form method="POST" action="{{ url_for('admin.update_competition_status', comp_id=competition.id) }}">
+        {# 提交的下一个状态：草稿→active, 进行中→finished, 已结束→draft #}
         <input type="hidden" name="status" value="{{ 'active' if competition.status=='draft' else 'finished' if competition.status=='active' else 'draft' }}">
         <button class="btn btn-{{ 'success' if competition.status=='draft' else 'warning' if competition.status=='active' else 'secondary' }} btn-sm">
             {% if competition.status == 'draft' %}<i class="bi bi-play-fill"></i> 开始竞赛
@@ -25,7 +43,12 @@
     </form>
 </div>
 
-<!-- Tabs -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 顶部 Tab 导航：三个标签页，使用 Bootstrap Tab 组件 -->
+<!-- tab-challenges: 题目管理（显示题目数量徽章） -->
+<!-- tab-environments: 环境部署 -->
+<!-- tab-scores: 成绩排名 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <ul class="nav nav-pills mb-4" id="compTabs" role="tablist">
     <li class="nav-item">
         <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-challenges">
@@ -46,10 +69,18 @@
 </ul>
 
 <div class="tab-content">
-<!-- ═══════════ TAB 1: 题目 ═══════════ -->
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: 题目管理 -->
+<!-- 展示该竞赛下所有题目卡片，每张卡片显示：标题、类型、分数、判题方式、镜像状态 -->
+<!-- Docker 实操题显示：判题方式（端口/命令/文件）、镜像是否已构建 -->
+<!-- 试卷考题显示：试题数量徽章 -->
+<!-- 每张卡片提供：编辑按钮、编辑试题按钮（仅试卷）、删除按钮 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane fade show active" id="tab-challenges">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="mb-0">题目列表</h6>
+        {# 点击弹出 createChallengeModal 模态框 #}
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createChallengeModal">
             <i class="bi bi-plus-lg"></i> 添加题目
         </button>
@@ -62,6 +93,7 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <h6 class="mb-0">
+                            {# 题目序号 + 标题；如果是试卷类型显示黄色「试卷」徽章 #}
                             #{{ chal.order }} {{ chal.title }}
                             {% if chal.challenge_type == 'exam' %}<span class="badge bg-warning ms-1">试卷</span>{% endif %}
                         </h6>
@@ -70,16 +102,21 @@
                     <p class="text-muted small mb-2">{{ chal.description or '暂无描述' }}</p>
                     <div class="small text-muted mb-2">
                         {% if chal.challenge_type == 'exam' %}
+                        {# 试卷类型显示试题数量 #}
                         试题数：<span class="badge bg-info">{{ exam_questions_map.get(chal.id, [])|length }}</span>
                         {% else %}
+                        {# Docker 实操类型显示判题方式中文名和镜像构建状态 #}
                         判题：<span class="badge bg-secondary">{{ {'port':'端口','command':'命令','file':'文件'}.get(chal.judge_type, chal.judge_type) }}</span>
                         镜像：{% if chal.image_tag %}<span class="badge bg-success">已构建</span>{% else %}<span class="badge bg-warning">未构建</span>{% endif %}
                         {% endif %}
                     </div>
+                    {# 编辑题目按钮 → 打开 editChalModal{chal.id} #}
                     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editChalModal{{ chal.id }}"><i class="bi bi-pencil"></i></button>
                     {% if chal.challenge_type == 'exam' %}
+                    {# 编辑试题按钮 → 打开 examQuestionsModal{chal.id}（仅试卷类型可用） #}
                     <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#examQuestionsModal{{ chal.id }}"><i class="bi bi-list-ul"></i> 编辑试题</button>
                     {% endif %}
+                    {# 删除题目：POST 到 delete_challenge 接口，前端 confirm 确认 #}
                     <form method="POST" action="{{ url_for('admin.delete_challenge', challenge_id=chal.id) }}" class="d-inline" onsubmit="return confirm('确定删除此题目？')">
                         <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
                     </form>
@@ -89,27 +126,39 @@
         {% endfor %}
     </div>
     {% else %}
+    {# 无题目时的空状态提示 #}
     <div class="empty-state"><p>暂无题目，点击右上角添加</p></div>
     {% endif %}
 </div>
 
-<!-- ═══════════ TAB 2: 环境 ═══════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: 环境部署 -->
+<!-- 管理所有选手的容器环境实例 -->
+<!-- 顶部操作按钮：一键部署（SocketIO）、全部停止、全部清除 -->
+<!-- 部署日志面板（默认隐藏，开始部署时显示） -->
+<!-- 环境实例表格：选手名、队伍、题目、容器名、端口、状态、操作按钮 -->
+<!-- 每个实例操作：启动/停止/删除（通过 AJAX 调用 envAction） -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane fade" id="tab-environments">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="mb-0">环境实例</h6>
         <div class="d-flex gap-2">
+            {# 一键部署：调用 startDeploy() → POST /admin/competitions/{comp_id}/deploy #}
             <button class="btn btn-success btn-sm" id="deployBtn" onclick="startDeploy()">
                 <i class="bi bi-rocket-takeoff"></i> 一键部署
             </button>
-            <form method="POST" action="{{ url_for('admin.stop_all', comp_id=competition.id) }}" class="d-inline">
-                <button class="btn btn-warning btn-sm"><i class="bi bi-stop-circle"></i> 全部停止</button>
-            </form>
-            <form method="POST" action="{{ url_for('admin.remove_all', comp_id=competition.id) }}" class="d-inline" onsubmit="return confirm('确定删除所有容器？')">
-                <button class="btn btn-danger btn-sm"><i class="bi bi-trash"></i> 全部清除</button>
-            </form>
+            {# 全部停止：调用 stopAllEnvs() → POST /admin/competitions/{comp_id}/stop-all #}
+            <button class="btn btn-warning btn-sm" id="stopAllBtn" onclick="stopAllEnvs()">
+                <i class="bi bi-stop-circle"></i> 全部停止
+            </button>
+            {# 全部清除：调用 removeAllEnvs() → POST /admin/competitions/{comp_id}/remove-all，需要 confirm #}
+            <button class="btn btn-danger btn-sm" id="removeAllBtn" onclick="removeAllEnvs()">
+                <i class="bi bi-trash"></i> 全部清除
+            </button>
         </div>
     </div>
 
+    {# 部署日志面板：显示 SocketIO 推送的实时部署进度 #}
     <div class="deploy-log mb-3" id="deployLog" style="display:none;">
         <div class="d-flex justify-content-between mb-2">
             <span style="font-weight:600;">部署日志</span>
@@ -132,12 +181,14 @@
                     <td>{{ env.challenge_title }}</td>
                     <td><code class="code-tag">{{ env.container_name }}</code></td>
                     <td>{{ env.host_port or '-' }}</td>
+                    {# 状态中文映射：running→运行（绿色）, stopped→停止（黄色）, pending→等待（灰色） #}
                     <td><span class="badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">{{ {'running':'运行','stopped':'停止','pending':'等待'}.get(env.status, env.status) }}</span></td>
                     <td>
                         <div class="d-flex gap-1">
-                            <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='start') }}" class="d-inline"><button class="btn btn-success btn-sm" title="启动"><i class="bi bi-play-fill"></i></button></form>
-                            <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='stop') }}" class="d-inline"><button class="btn btn-warning btn-sm" title="停止"><i class="bi bi-stop-fill"></i></button></form>
-                            <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='remove') }}" class="d-inline" onsubmit="return confirm('确定删除？')"><button class="btn btn-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button></form>
+                            {# 单个环境操作按钮，调用 envAction(envId, action) #}
+                            <button class="btn btn-success btn-sm" title="启动" onclick="envAction({{ env.id }}, 'start')"><i class="bi bi-play-fill"></i></button>
+                            <button class="btn btn-warning btn-sm" title="停止" onclick="envAction({{ env.id }}, 'stop')"><i class="bi bi-stop-fill"></i></button>
+                            <button class="btn btn-danger btn-sm" title="删除" onclick="envAction({{ env.id }}, 'remove')"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -150,7 +201,13 @@
     {% endif %}
 </div>
 
-<!-- ═══════════ TAB 3: 成绩 ═══════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 3: 成绩排名 -->
+<!-- 动态列成绩表：每道题一列，显示该选手该题是否通过及得分 -->
+<!-- 排名逻辑由后端 rankings 变量提供，按总分降序 -->
+<!-- 前三名金色/银色/铜色高亮 -->
+<!-- score_lookup 是一个 (user_id, challenge_id) -> {passed, score} 的字典 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane fade" id="tab-scores">
     <h6 class="mb-3">成绩与排名</h6>
     {% if rankings and challenges %}
@@ -165,12 +222,14 @@
             </thead>
             <tbody>
                 {% for row in rankings %}
+                {# 排名高亮：第1名金色，第2名银色，第3名铜色 #}
                 <tr class="{{ 'rank-gold' if loop.index==1 else 'rank-silver' if loop.index==2 else 'rank-bronze' if loop.index==3 else '' }}">
                     <td class="fw-bold">{{ loop.index }}</td>
                     <td>{{ row.team_name or '-' }}</td>
                     <td>{{ row.username }}</td>
                     {% for chal in challenges %}
                     <td class="text-center">
+                        {# 在 score_lookup 中查找该选手对该题的成绩 #}
                         {% set ns = namespace(found=false) %}
                         {% for (uid, cid), s in score_lookup.items() %}
                             {% if uid == row.id and cid == chal.id and s.passed %}
@@ -178,6 +237,7 @@
                                 {% set ns.found = true %}
                             {% endif %}
                         {% endfor %}
+                        {# 未通过或未作答则显示横线 #}
                         {% if not ns.found %}<span class="text-muted">-</span>{% endif %}
                     </td>
                     {% endfor %}
@@ -194,7 +254,25 @@
 </div>
 </div>
 
-<!-- ═══════════ CREATE CHALLENGE MODAL ═══════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 模态框：创建新题目 (createChallengeModal) -->
+<!-- 提交到 POST /admin/competitions/{comp_id}/create-challenge -->
+<!-- 表单字段： -->
+<!--   - title: 题目标题（必填） -->
+<!--   - points: 分数（默认 100） -->
+<!--   - order: 排序序号 -->
+<!--   - challenge_type: docker（Docker 实操）或 exam（试卷考试） -->
+<!--   - description: 题目描述 -->
+<!--   - 题库选择器（presetSelector）：从预置题库中选取，自动填充字段 -->
+<!--   - 操作系统选择器（osSelector）：影响 Dockerfile 的 FROM 镜像 -->
+<!--   - 安装 Docker 复选框：在 Dockerfile 中注入 Docker CLI 安装命令 -->
+<!--   - login_info: SSH 登录信息（Docker 题用） -->
+<!--   - judge_type: 判题方式（port/command/file） -->
+<!--   - judge_config: 判题配置 JSON -->
+<!--   - template_name: 可选 Dockerfile 模板 -->
+<!--   - dockerfile_content: 自定义 Dockerfile 内容 -->
+<!-- 切换题目类型时，JS toggleDockerFields() 显示/隐藏 Docker 字段 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="modal fade" id="createChallengeModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -207,6 +285,7 @@
                         <div class="col-2"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="0"></div>
                         <div class="col-4">
                             <label class="form-label">题目类型</label>
+                            {# 切换类型时调用 toggleDockerFields('create') 显示/隐藏 Docker 配置字段 #}
                             <select class="form-select" name="challenge_type" id="createChallengeType" onchange="toggleDockerFields('create')">
                                 <option value="docker">Docker 实操</option>
                                 <option value="exam">试卷考试</option>
@@ -217,10 +296,12 @@
                         <label class="form-label">题目描述</label>
                         <textarea class="form-control" name="description" id="createDesc" rows="2" placeholder="选手需要完成的任务说明"></textarea>
                     </div>
+                    {# 题库选择区域：仅在 presets 非空时显示 #}
                     {% if presets %}
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label"><i class="bi bi-journal-bookmark-fill me-1"></i>从题库选择（可选）</label>
+                            {# 选择题库预设后，JS applyPreset() 自动填充标题、描述、Dockerfile 等字段 #}
                             <select class="form-select" id="presetSelector" onchange="applyPreset()">
                                 <option value="">— 手动填写 —</option>
                                 {% for p in presets %}
@@ -230,22 +311,23 @@
                         </div>
                         <div class="col-3">
                             <label class="form-label">操作系统</label>
+                            {# 切换操作系统时重新生成 Dockerfile 的 FROM 行 #}
                             <select class="form-select" id="osSelector" onchange="applyOsToDockerfile()">
                                 <option value="Ubuntu 22.04">Ubuntu 22.04</option>
                                 <option value="Ubuntu 20.04">Ubuntu 20.04</option>
-                                <option value="CentOS 7">CentOS 7</option>
                                 <option value="Debian 12">Debian 12</option>
-                                <option value="Rocky Linux 9">Rocky Linux 9</option>
                             </select>
                         </div>
                         <div class="col-3 d-flex align-items-end">
                             <div class="form-check mb-2">
+                                {# 勾选后在 apt-get install 行之前注入 Docker CLI 安装 RUN 命令 #}
                                 <input class="form-check-input" type="checkbox" id="installDockerChk" onchange="applyPreset()">
                                 <label class="form-check-label small" for="installDockerChk">安装 Docker</label>
                             </div>
                         </div>
                     </div>
                     {% endif %}
+                    {# Docker 实操专属字段区域（题目类型为 docker 时显示，exam 时隐藏） #}
                     <div id="createDockerFields">
                         <div class="mb-2">
                             <label class="form-label">登录信息 <small class="text-muted">（如：SSH root / password）</small></label>
@@ -276,6 +358,7 @@
                             <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8" spellcheck="false" placeholder="FROM ubuntu:22.04&#10;RUN apt-get update && apt-get install -y nginx&#10;EXPOSE 80&#10;CMD [&quot;/bin/bash&quot;, &quot;-c&quot;, &quot;tail -f /dev/null&quot;]"></textarea>
                         </div>
                     </div>
+                    {# 试卷考试类型提示（题目类型为 exam 时显示） #}
                     <div id="createExamNote" style="display:none;">
                         <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>试卷题目创建后，请在题目卡片中点击「编辑试题」添加具体试题</div>
                     </div>
@@ -289,7 +372,13 @@
     </div>
 </div>
 
-<!-- ═══════════ EDIT CHALLENGE MODALS ═══════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 模态框：编辑已有题目（每个题目一个独立的模态框） -->
+<!-- 提交到 POST /admin/challenges/{challenge_id}/edit -->
+<!-- 表单字段与创建题目相同，但已预填当前值 -->
+<!-- Dockerfile 修改后保存时会自动触发重新构建镜像 -->
+<!-- 题目类型切换通过 JS toggleEditDockerFields(chalId) 控制 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 {% for chal in challenges %}
 <div class="modal fade" id="editChalModal{{ chal.id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -303,6 +392,7 @@
                         <div class="col-2"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="{{ chal.order }}"></div>
                         <div class="col-4">
                             <label class="form-label">题目类型</label>
+                            {# 根据当前类型预选，同时切换 Docker 字段可见性 #}
                             <select class="form-select" name="challenge_type" id="editChallengeType{{ chal.id }}" onchange="toggleEditDockerFields({{ chal.id }})">
                                 <option value="docker" {{ 'selected' if chal.challenge_type=='docker' }}>Docker 实操</option>
                                 <option value="exam" {{ 'selected' if chal.challenge_type=='exam' }}>试卷考试</option>
@@ -310,6 +400,7 @@
                         </div>
                     </div>
                     <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea></div>
+                    {# Docker 专属字段：试卷类型时默认隐藏 #}
                     <div id="editDockerFields{{ chal.id }}" {{ 'style=display:none;' if chal.challenge_type=='exam' }}>
                         <div class="mb-2">
                             <label class="form-label">登录信息 <small class="text-muted">（如：SSH root / password）</small></label>
@@ -342,7 +433,17 @@
 </div>
 {% endfor %}
 
-<!-- ═══════════ EXAM QUESTION MODALS ═══════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 模态框：编辑试卷试题（每个试卷类型题目一个独立的模态框） -->
+<!-- 左侧：已有试题列表（显示题型、内容、选项、答案、分数），含编辑/删除按钮 -->
+<!-- 右侧：添加/编辑试题表单 -->
+<!-- 支持的题型：单选题(single_choice)、判断题(true_false)、填空题(fill_blank) -->
+<!-- 试题 CRUD 操作通过 AJAX 完成： -->
+<!--   创建: POST /admin/challenges/{chalId}/exam-questions -->
+<!--   编辑: POST /admin/exam-questions/{qId}/edit -->
+<!--   删除: POST /admin/exam-questions/{qId}/delete -->
+<!-- 题型切换时 JS onQTypeChange() 控制选项字段的显示/隐藏 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 {% for chal in challenges %}
 {% if chal.challenge_type == 'exam' %}
 <div class="modal fade" id="examQuestionsModal{{ chal.id }}" tabindex="-1">
@@ -353,14 +454,16 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <!-- Existing questions list -->
+                <!-- 已有试题列表 -->
                 <h6 class="mb-3">已有试题 <span class="badge bg-primary" id="qCount{{ chal.id }}">{{ exam_questions_map.get(chal.id, [])|length }}</span></h6>
                 <div id="questionsList{{ chal.id }}" class="mb-4">
                     {% for q in exam_questions_map.get(chal.id, []) %}
+                    {# 每道试题卡片，qRow{id} 用于 JS DOM 操作定位 #}
                     <div class="card mb-2" id="qRow{{ q.id }}">
                         <div class="card-body py-2">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
+                                    {# 题型中文映射：single_choice→单选(蓝), true_false→判断(绿), fill_blank→填空(青) #}
                                     <span class="badge bg-{{ 'primary' if q.question_type=='single_choice' else 'success' if q.question_type=='true_false' else 'info' }} me-1">
                                         {{ {'single_choice':'单选','true_false':'判断','fill_blank':'填空'}.get(q.question_type, q.question_type) }}
                                     </span>
@@ -370,7 +473,9 @@
                                     <small class="text-success ms-2">答案：{{ q.answer }}</small>
                                 </div>
                                 <div class="d-flex gap-1 flex-shrink-0 ms-2">
+                                    {# 编辑按钮：调用 editQuestion(qId, chalId) 填充表单 #}
                                     <button class="btn btn-outline-primary btn-sm" onclick="editQuestion({{ q.id }}, {{ chal.id }})" title="编辑"><i class="bi bi-pencil"></i></button>
+                                    {# 删除按钮：调用 deleteQuestion(qId, chalId)，前端 confirm 确认 #}
                                     <button class="btn btn-outline-danger btn-sm" onclick="deleteQuestion({{ q.id }}, {{ chal.id }})" title="删除"><i class="bi bi-trash"></i></button>
                                 </div>
                             </div>
@@ -381,13 +486,16 @@
                     {% endfor %}
                 </div>
                 <hr>
-                <!-- Add / Edit question form -->
+                <!-- 添加 / 编辑试题表单 -->
+                {# formTitle 和 submitQBtn 文本在编辑/添加模式间切换 #}
                 <h6 class="mb-3" id="formTitle{{ chal.id }}">添加试题</h6>
                 <form id="questionForm{{ chal.id }}" onsubmit="return saveQuestion(event, {{ chal.id }})">
+                    {# editId 隐藏字段：为空表示添加模式，有值表示编辑模式 #}
                     <input type="hidden" name="edit_id" id="editId{{ chal.id }}" value="">
                     <div class="row mb-2">
                         <div class="col-3">
                             <label class="form-label">题型</label>
+                            {# 切换题型时调用 onQTypeChange() 控制选项区域和答案输入提示 #}
                             <select class="form-select form-select-sm" name="question_type" id="qType{{ chal.id }}" onchange="onQTypeChange({{ chal.id }})">
                                 <option value="single_choice">单选题</option>
                                 <option value="true_false">判断题</option>
@@ -404,6 +512,7 @@
                         </div>
                         <div class="col-4">
                             <label class="form-label">正确答案 *</label>
+                            {# 占位符根据题型变化：单选→A/B/C/D, 判断→正确/错误, 填空→具体值 #}
                             <input type="text" class="form-control form-control-sm" name="answer" id="answer{{ chal.id }}" placeholder="A / 正确 / nginx" required>
                         </div>
                     </div>
@@ -411,6 +520,7 @@
                         <label class="form-label">题目内容 *</label>
                         <input type="text" class="form-control form-control-sm" name="question_text" placeholder="例：HTTP 协议的默认端口是？" required>
                     </div>
+                    {# 选项区域：仅单选题显示（每题一行格式，如 "A. 80"），判断题和填空题自动隐藏 #}
                     <div class="mb-2" id="optionsRow{{ chal.id }}">
                         <label class="form-label">选项（每行一个，如：A. 80）</label>
                         <textarea class="form-control form-control-sm" name="options_text" rows="3" placeholder="A. 80&#10;B. 443&#10;C. 22&#10;D. 8080"></textarea>
@@ -418,6 +528,7 @@
                     <button type="submit" class="btn btn-primary btn-sm" id="submitQBtn{{ chal.id }}">
                         <i class="bi bi-plus-lg"></i> 添加试题
                     </button>
+                    {# 取消编辑按钮：仅在编辑模式下显示 #}
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="cancelEditBtn{{ chal.id }}" style="display:none;" onclick="cancelEdit({{ chal.id }})">取消编辑</button>
                 </form>
             </div>
@@ -430,21 +541,43 @@
 
 {% block extra_scripts %}
 <script>
-// ── Deploy SocketIO ──
+// ═══════════════════════════════════════════════════════════════════════
+// SocketIO 实时部署进度
+// ─────────────────────────────────────────────────────────────────────
+// 部署流程：
+//   1. 管理员点击「一键部署」→ 调用 startDeploy()
+//   2. startDeploy() POST /admin/competitions/{comp_id}/deploy
+//   3. 后端通过 SocketIO 推送 deploy_progress 事件（含 current/total/message）
+//   4. 前端 addLog() 实时追加日志到 logContent 面板
+//   5. 部署完成后推送 deploy_complete 事件，3 秒后自动刷新页面
+//   6. 如果 15 秒内未收到任何进度，显示警告并恢复按钮
+// ═══════════════════════════════════════════════════════════════════════
+
+// SocketIO 客户端连接
 const socket = io();
 const deployBtn = document.getElementById('deployBtn');
 const logContent = document.getElementById('logContent');
 const logDiv = document.getElementById('deployLog');
 let deployTimeout = null;
 
+/**
+ * 向部署日志面板追加一条日志
+ * @param {string} msg - 日志消息文本
+ * @param {string} cls - CSS 类名：info(默认蓝色), success(绿色), error(红色), warning(黄色)
+ */
 function addLog(msg, cls) {
     const el = document.createElement('div');
     el.className = cls || 'info';
     el.textContent = msg;
     logContent.appendChild(el);
+    // 自动滚动到最新日志
     logContent.scrollTop = logContent.scrollHeight;
 }
 
+// 监听 SocketIO deploy_progress 事件：逐条接收部署进度
+// data 格式：{ current: 当前序号, total: 总数, message: 消息文本 }
+// 根据消息内容自动判定日志等级（包含 [失败]/[错误]→红色，[成功]→绿色，其他→蓝色）
+// 60 秒后无后续进度则显示「请耐心等待」提示
 socket.on('deploy_progress', function(data) {
     logDiv.style.display = 'block';
     const cls = data.message.includes('[失败]')||data.message.includes('[错误]') ? 'error' :
@@ -454,6 +587,9 @@ socket.on('deploy_progress', function(data) {
     deployTimeout = setTimeout(() => addLog('[提示] 操作耗时较长，请耐心等待...', 'warning'), 60000);
 });
 
+// 监听 SocketIO deploy_complete 事件：部署任务全部完成
+// data 格式：{ success: 成功数, failed: 失败数 }
+// 清除超时计时器，显示汇总结果，恢复按钮，3 秒后自动刷新页面
 socket.on('deploy_complete', function(data) {
     if (deployTimeout) { clearTimeout(deployTimeout); deployTimeout = null; }
     addLog(`========== 完成：成功 ${data.success}，失败 ${data.failed} ==========`, data.failed > 0 ? 'warning' : 'success');
@@ -462,6 +598,13 @@ socket.on('deploy_complete', function(data) {
     setTimeout(() => location.reload(), 3000);
 });
 
+/**
+ * 一键部署：初始化所有选手的容器环境
+ * POST /admin/competitions/{comp_id}/deploy（AJAX 请求，带 X-Requested-With 头）
+ * 禁用按钮 → 清空日志 → 显示日志面板 → 发起请求
+ * 如果后端返回 docker_ok=false，说明 Docker 服务未连接
+ * 15 秒内未收到 SocketIO 进度则显示警告
+ */
 async function startDeploy() {
     deployBtn.disabled = true;
     deployBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 部署中...';
@@ -490,41 +633,174 @@ async function startDeploy() {
     }
 }
 
-// ── Toggle Docker fields for create modal ──
+/**
+ * 停止所有容器
+ * POST /admin/competitions/{comp_id}/stop-all
+ * 禁用按钮 → 显示日志 → 成功后 1.5 秒刷新
+ */
+async function stopAllEnvs() {
+    const btn = document.getElementById('stopAllBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    logDiv.style.display = 'block';
+    addLog('正在停止所有容器...', 'info');
+    try {
+        const resp = await fetch('{{ url_for("admin.stop_all", comp_id=competition.id) }}', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (resp.ok) {
+            addLog('========== 全部停止完成 ==========', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            addLog('[错误] 停止失败', 'error');
+        }
+    } catch (e) {
+        addLog(`[错误] ${e.message}`, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stop-circle"></i> 全部停止';
+}
+
+/**
+ * 删除所有容器（不可撤销，需前端 confirm 确认）
+ * POST /admin/competitions/{comp_id}/remove-all
+ */
+async function removeAllEnvs() {
+    if (!confirm('确定删除所有容器？此操作不可撤销。')) return;
+    const btn = document.getElementById('removeAllBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    logDiv.style.display = 'block';
+    addLog('正在删除所有容器...', 'info');
+    try {
+        const resp = await fetch('{{ url_for("admin.remove_all", comp_id=competition.id) }}', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (resp.ok) {
+            addLog('========== 全部清除完成 ==========', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            addLog('[错误] 删除失败', 'error');
+        }
+    } catch (e) {
+        addLog(`[错误] ${e.message}`, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-trash"></i> 全部清除';
+}
+
+/**
+ * 单个环境实例操作（启动/停止/删除）
+ * POST /admin/environments/{envId}/action/{action}
+ * @param {number} envId - 环境实例 ID
+ * @param {string} action - 操作类型：'start' | 'stop' | 'remove'
+ * 删除操作需 confirm 确认，成功则 1 秒后自动刷新
+ */
+async function envAction(envId, action) {
+    const labels = { start: '启动', stop: '停止', remove: '删除' };
+    if (action === 'remove' && !confirm('确定删除此环境？')) return;
+    logDiv.style.display = 'block';
+    addLog(`正在${labels[action]}环境 #${envId}...`, 'info');
+    try {
+        const resp = await fetch(`/admin/environments/${envId}/action/${action}`, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const data = await resp.json();
+        if (data.success) {
+            addLog(`[成功] 环境${labels[action]}完成`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            addLog(`[错误] ${data.error || '操作失败'}`, 'error');
+        }
+    } catch (e) {
+        addLog(`[错误] ${e.message}`, 'error');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 创建题目模态框 — Docker/Exam 字段切换
+// ─────────────────────────────────────────────────────────────────────
+// 当题目类型下拉框变化时：
+//   - 选择 "docker" → 显示 createDockerFields（判题方式、Dockerfile 等）
+//   - 选择 "exam" → 隐藏 Docker 字段，显示 Exam 提示信息
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * 创建题目模态框：根据题目类型切换 Docker 字段可见性
+ * @param {string} mode - 'create' 固定值，用于兼容性
+ */
 function toggleDockerFields(mode) {
     const type = document.getElementById('createChallengeType').value;
     document.getElementById('createDockerFields').style.display = type === 'docker' ? '' : 'none';
     document.getElementById('createExamNote').style.display = type === 'exam' ? '' : 'none';
 }
 
+/**
+ * 编辑题目模态框：根据题目类型切换 Docker 字段可见性
+ * @param {number} chalId - 题目 ID，用于定位对应模态框的 DOM 元素
+ */
 function toggleEditDockerFields(chalId) {
     const type = document.getElementById('editChallengeType' + chalId).value;
     document.getElementById('editDockerFields' + chalId).style.display = type === 'docker' ? '' : 'none';
 }
 
-// ── Exam Question type change ──
+// ═══════════════════════════════════════════════════════════════════════
+// 试卷题型切换 — 控制选项区域和答案输入提示
+// ─────────────────────────────────────────────────────────────────────
+// 单选 (single_choice)：显示选项文本域，答案占位符为 A/B/C/D
+// 判断 (true_false)：隐藏选项（固定为正确/错误），答案占位符为 正确/错误
+// 填空 (fill_blank)：隐藏选项，答案占位符为具体值（如 nginx）
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * 题型下拉框变化时调整 UI
+ * @param {number} chalId - 题目 ID
+ */
 function onQTypeChange(chalId) {
     const type = document.getElementById('qType' + chalId).value;
     const optionsRow = document.getElementById('optionsRow' + chalId);
     const answerInput = document.getElementById('answer' + chalId);
     if (type === 'fill_blank') {
+        // 填空题：不需要选项
         optionsRow.style.display = 'none';
         answerInput.placeholder = '例：nginx';
     } else if (type === 'true_false') {
+        // 判断题：选项固定为["正确", "错误"]，无需手动输入
         optionsRow.style.display = 'none';
         answerInput.placeholder = '正确 或 错误';
     } else {
+        // 单选题：需要输入选项（每行一个）
         optionsRow.style.display = '';
         answerInput.placeholder = 'A / B / C / D';
     }
 }
 
-// ── Exam question CRUD ──
+// ═══════════════════════════════════════════════════════════════════════
+// 试卷试题 CRUD（增删改查）
+// ─────────────────────────────────────────────────────────────────────
+// 数据格式：选项文本在 UI 中以每行一条的文本格式展示，提交时转为 JSON 数组
+// 判断题固定选项为 ["正确", "错误"]
+// 填空题选项为 []（空数组）
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * 将多行文本转换为 JSON 数组字符串
+ * @param {string} text - 换行分隔的选项文本（如 "A. 80\nB. 443"）
+ * @returns {string} JSON 字符串（如 '["A. 80","B. 443"]'）
+ */
 function optionsTextToJson(text) {
     const lines = text.split('\n').filter(l => l.trim());
     return JSON.stringify(lines.map(l => l.trim()));
 }
 
+/**
+ * 将 JSON 数组字符串转换为换行文本（用于回填表单）
+ * @param {string} json - JSON 数组字符串（如 '["A. 80","B. 443"]'）
+ * @returns {string} 换行分隔的文本
+ */
 function jsonToOptionsText(json) {
     try {
         return JSON.parse(json).join('\n');
@@ -533,13 +809,28 @@ function jsonToOptionsText(json) {
     }
 }
 
+/**
+ * 保存试题（添加或编辑）
+ * ─────────────────────────────────────────────────────────────
+ * 添加模式：POST /admin/challenges/{chalId}/exam-questions
+ * 编辑模式：POST /admin/exam-questions/{editId}/edit
+ * editId 隐藏字段为空→添加，有值→编辑
+ * 提交前根据题型组装选项 JSON：
+ *   - 单选题：将 options_text 转为 JSON 数组
+ *   - 判断题：固定为 ["正确", "错误"]
+ *   - 填空题：空数组 []
+ * 成功后刷新页面以更新列表
+ * ─────────────────────────────────────────────────────────────
+ * @param {Event} event - 表单提交事件
+ * @param {number} chalId - 所属题目 ID
+ */
 async function saveQuestion(event, chalId) {
     event.preventDefault();
     const form = document.getElementById('questionForm' + chalId);
     const formData = new FormData(form);
     const editId = document.getElementById('editId' + chalId).value;
 
-    // Convert options text to JSON
+    // 将选项文本转换为 JSON
     const optionsText = formData.get('options_text') || '';
     const qType = formData.get('question_type');
     let options = '[]';
@@ -559,9 +850,11 @@ async function saveQuestion(event, chalId) {
 
     let url, method;
     if (editId) {
+        // 编辑已有试题
         url = '/admin/exam-questions/' + editId + '/edit';
         method = 'POST';
     } else {
+        // 添加新试题
         url = '/admin/challenges/' + chalId + '/exam-questions';
         method = 'POST';
     }
@@ -579,12 +872,23 @@ async function saveQuestion(event, chalId) {
     }
 }
 
+/**
+ * 编辑试题：从 DOM 中提取当前试题数据，填充到表单中
+ * ─────────────────────────────────────────────────────────────
+ * 从试题卡片 DOM (qRow{qId}) 中解析出：题型、题目内容、答案、选项、分值、排序
+ * 设置 editId 隐藏字段为当前试题 ID（表示编辑模式）
+ * 切换表单标题为「编辑试题」，按钮为「保存修改」，显示取消按钮
+ * 调用 onQTypeChange() 根据题型调整 UI
+ * ─────────────────────────────────────────────────────────────
+ * @param {number} qId - 试题 ID
+ * @param {number} chalId - 所属题目 ID
+ */
 async function editQuestion(qId, chalId) {
-    // Find the question row and extract data
+    // 定位题目行并提取数据
     const row = document.getElementById('qRow' + qId);
     if (!row) return;
-    // Fetch question data from the rendered info and populate the form
-    // Since we have data in the DOM, parse it
+    // 从渲染信息中获取题目数据并填充表单
+    // DOM 中已有数据，直接解析
     const badges = row.querySelectorAll('.badge');
     let qType = 'single_choice';
     if (badges.length > 0) {
@@ -594,9 +898,9 @@ async function editQuestion(qId, chalId) {
         else if (typeText === '填空') qType = 'fill_blank';
     }
 
-    // Use JSON from server - reload just the question data
-    // Simpler approach: fetch all questions via a quick API call
-    // For now, use the DOM data
+    // 从服务器获取 JSON — 仅重新加载题目数据
+    // 更简单的方式：通过 API 快速获取所有题目
+    // 暂时使用 DOM 中的数据
     const textEl = row.querySelector('strong');
     const questionText = textEl ? textEl.textContent.replace(/^#\d+\s*/, '') : '';
     const answerMatch = row.innerHTML.match(/答案：([^<]+)/);
@@ -608,6 +912,7 @@ async function editQuestion(qId, chalId) {
     const orderMatch = row.querySelector('strong') ? row.querySelector('strong').textContent.match(/#(\d+)/) : null;
     const order = orderMatch ? orderMatch[1] : '0';
 
+    // 填充表单字段
     const form = document.getElementById('questionForm' + chalId);
     document.getElementById('editId' + chalId).value = qId;
     document.getElementById('qType' + chalId).value = qType;
@@ -618,12 +923,19 @@ async function editQuestion(qId, chalId) {
     form.querySelector('[name="options_text"]').value = jsonToOptionsText(optionsStr);
     document.getElementById('answer' + chalId).value = answer;
 
+    // 根据题型调整选项区域可见性
     onQTypeChange(chalId);
+    // 切换 UI 为编辑模式
     document.getElementById('formTitle' + chalId).textContent = '编辑试题';
     document.getElementById('submitQBtn' + chalId).innerHTML = '<i class="bi bi-check-lg"></i> 保存修改';
     document.getElementById('cancelEditBtn' + chalId).style.display = '';
 }
 
+/**
+ * 取消编辑：重置表单为添加模式
+ * 清空 editId 隐藏字段 → 重置表单 → 恢复标题和按钮文本 → 隐藏取消按钮 → 显示选项区域
+ * @param {number} chalId - 所属题目 ID
+ */
 function cancelEdit(chalId) {
     document.getElementById('editId' + chalId).value = '';
     document.getElementById('questionForm' + chalId).reset();
@@ -633,6 +945,13 @@ function cancelEdit(chalId) {
     document.getElementById('optionsRow' + chalId).style.display = '';
 }
 
+/**
+ * 删除试题（需确认）
+ * POST /admin/exam-questions/{qId}/delete
+ * 成功后刷新页面以更新列表
+ * @param {number} qId - 试题 ID
+ * @param {number} chalId - 所属题目 ID（用于刷新定位，未实际使用于请求）
+ */
 async function deleteQuestion(qId, chalId) {
     if (!confirm('确定删除此试题？')) return;
     try {
@@ -650,73 +969,111 @@ async function deleteQuestion(qId, chalId) {
     }
 }
 
-// Remember active tab
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 状态记忆
+// 使用 sessionStorage 记住用户当前选中的 Tab
+// 刷新页面后自动恢复到上次选中的 Tab
+// 监听 Bootstrap shown.bs.tab 事件，切换时保存到 sessionStorage
+// ═══════════════════════════════════════════════════════════════════════
+
+// 恢复上次激活的 Tab
 const activeTab = sessionStorage.getItem('compActiveTab');
 if (activeTab) {
     const tab = document.querySelector(`[data-bs-target="${activeTab}"]`);
     if (tab) new bootstrap.Tab(tab).show();
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 题库预设功能（仅当 presets 变量非空时可用）
+// ─────────────────────────────────────────────────────────────────────
+// PRESET_DATA: 从后端传入的题库预设列表（JSON 数组）
+// OS_IMAGES: 操作系统名称到 Docker 镜像标签的映射
+// applyPreset(): 选择题库预设后自动填充以下字段：
+//   标题、描述、登录信息、判题方式、判题配置、Dockerfile
+// 同时根据操作系统选择器替换 FROM 行
+// 如果勾选「安装 Docker」，则在 apt-get install 之前注入 Docker CLI 安装命令
+// ═══════════════════════════════════════════════════════════════════════
+
 {% if presets %}
 const PRESET_DATA = {{ presets | tojson | safe }};
 const OS_IMAGES = {
     'Ubuntu 22.04': 'ubuntu:22.04',
     'Ubuntu 20.04': 'ubuntu:20.04',
-    'CentOS 7': 'centos:7',
     'Debian 12': 'debian:12',
-    'Rocky Linux 9': 'rockylinux:9',
 };
 {% endif %}
 
+/**
+ * 操作系统选择器变更时触发：重新应用题库预设（刷新 Dockerfile FROM 行）
+ * 仅在已选择了题库预设时生效
+ */
 function applyOsToDockerfile() {
     if (!document.getElementById('presetSelector').value) return;
     applyPreset();
 }
 
+/**
+ * 应用题库预设：从 PRESET_DATA 中查找选中的预设，填充创建题目表单
+ * ─────────────────────────────────────────────────────────────
+ * 1. 填充标题、描述、登录信息、判题方式、判题配置
+ * 2. 根据 osSelector 替换 Dockerfile 的 FROM 行（Ubuntu/Debian）
+ * 3. 如果勾选「安装 Docker」复选框：
+ *    - Ubuntu: 注入 Docker 官方源 + docker-ce-cli 安装命令（根据版本选择 focal/jammy）
+ *    - Debian: 注入 Debian Docker 源 + docker-ce-cli 安装命令（bookworm）
+ *    注入位置：在第一个 apt-get install 行之前插入 RUN 命令
+ * 4. 强制切换题目类型为 Docker 实操
+ * ─────────────────────────────────────────────────────────────
+ */
 function applyPreset() {
     const sel = document.getElementById('presetSelector');
     if (!sel.value) return;
     const p = PRESET_DATA.find(p => p.id == sel.value);
     if (!p) return;
+    // 填充基础字段
     document.querySelector('#createChallengeModal input[name="title"]').value = p.title;
     document.querySelector('#createChallengeModal textarea[name="description"]').value = p.description;
     if (p.login_info) document.querySelector('#createChallengeModal input[name="login_info"]').value = p.login_info;
     if (p.judge_type) document.querySelector('#createChallengeModal select[name="judge_type"]').value = p.judge_type;
     if (p.judge_config) document.querySelector('#createChallengeModal input[name="judge_config"]').value = p.judge_config;
 
-    // Build Dockerfile with OS selection
+    // 根据操作系统选择构建 Dockerfile
     let df = p.dockerfile_content;
     const osChoice = document.getElementById('osSelector').value;
     const osImage = OS_IMAGES[osChoice] || 'ubuntu:22.04';
+    // 替换 FROM 行以匹配所选操作系统
     df = df.replace(/FROM .+/, 'FROM ' + osImage);
 
     if (document.getElementById('installDockerChk').checked) {
-        // Inject Docker CLI install after apt-get/yum install line
+        // 在第一个包安装行之前注入 Docker CLI 安装命令
         const lines = df.split('\n');
         const result = [];
         let injected = false;
         for (const line of lines) {
-            result.push(line);
-            if (!injected && (line.includes('apt-get install') || line.includes('yum install') || line.includes('dnf install'))) {
-                if (osChoice === 'CentOS 7') {
-                    result.push('RUN yum install -y yum-utils && yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && yum install -y docker-ce-cli');
-                } else if (osChoice === 'Rocky Linux 9') {
-                    result.push('RUN dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo && dnf install -y docker-ce-cli');
-                } else if (osChoice.startsWith('Ubuntu')) {
+            if (!injected && line.includes('apt-get install')) {
+                if (osChoice.startsWith('Ubuntu')) {
+                    // Ubuntu: 根据版本确定 codename（20.04→focal, 22.04→jammy）
                     const codename = osChoice === 'Ubuntu 20.04' ? 'focal' : 'jammy';
                     result.push(`RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu ${codename} stable" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli`);
                 } else if (osChoice.startsWith('Debian')) {
+                    // Debian: 使用 bookworm 仓库
                     result.push('RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli');
                 }
                 injected = true;
             }
+            result.push(line);
         }
         df = result.join('\n');
     }
     document.querySelector('#createChallengeModal textarea[name="dockerfile_content"]').value = df;
+    // 使用题库预设时强制设为 Docker 实操类型
     document.querySelector('#createChallengeModal select[name="challenge_type"]').value = 'docker';
     toggleDockerFields('create');
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 切换监听：当用户切换 Tab 时，将当前激活的 Tab 目标存入 sessionStorage
+// 以便刷新页面后自动恢复到上次的 Tab
+// ═══════════════════════════════════════════════════════════════════════
 document.querySelectorAll('#compTabs button').forEach(btn => {
     btn.addEventListener('shown.bs.tab', e => sessionStorage.setItem('compActiveTab', e.target.dataset.bsTarget));
 });

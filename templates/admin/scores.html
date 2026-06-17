@@ -1,7 +1,13 @@
+<!--
+  成绩管理页（特定竞赛）
+  以表格形式展示所有选手在每个题目上的得分，支持按总分排名。
+  排名前三行有金银铜高亮样式。
+-->
 {% extends "base.html" %}
 {% block title %}{{ competition.name }} - 成绩管理{% endblock %}
 
 {% block content %}
+{# ══════ 面包屑导航 ══════ #}
 <div class="breadcrumb-bar">
     <a href="{{ url_for('admin.competitions') }}">竞赛管理</a>
     <span>/</span>
@@ -10,11 +16,18 @@
     <span>成绩管理</span>
 </div>
 
+{# ══════ 页面标题 ══════ #}
 <div class="page-header">
     <h4><i class="bi bi-bar-chart"></i> 成绩与排名</h4>
     <a href="{{ url_for('admin.competition_detail', comp_id=competition.id) }}" class="btn btn-outline-primary btn-sm">&larr; 返回</a>
 </div>
 
+{# ══════ 成绩排名表格 ══════
+   列布局：排名 | 队伍 | 选手 | 各题得分 | 总分 | 通过数
+   - rankings: 由后端按总分降序排列的选手列表
+   - challenges: 当前竞赛的所有题目（作为动态表头列）
+   - score_lookup: dict，key 为 (user_id, challenge_id)，value 为 Score 对象
+   - rank-gold/silver/bronze: 前三名行高亮 CSS 类 #}
 {% if rankings and challenges %}
 <div class="card">
     <div class="table-responsive">
@@ -22,16 +35,19 @@
             <thead>
                 <tr>
                     <th>#</th><th>队伍</th><th>选手</th>
+                    {# 动态生成每道题的列头：题目标题 + 满分值 #}
                     {% for chal in challenges %}<th class="text-center">{{ chal.title }}<br><small class="fw-normal">{{ chal.points }}分</small></th>{% endfor %}
                     <th class="text-center">总分</th><th class="text-center">通过</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in rankings %}
+                {# 排名前三行添加金银铜高亮样式 #}
                 <tr class="{{ 'rank-gold' if loop.index==1 else 'rank-silver' if loop.index==2 else 'rank-bronze' if loop.index==3 else '' }}">
                     <td class="fw-bold">{{ loop.index }}</td>
                     <td>{{ row.team_name or '-' }}</td>
                     <td>{{ row.username }}</td>
+                    {# 遍历每道题，查找该选手该题的得分记录 #}
                     {% for chal in challenges %}
                     <td class="text-center">
                         {% set ns = namespace(found=false) %}
@@ -53,6 +69,7 @@
     </div>
 </div>
 {% else %}
+{# 无数据时的空状态提示 #}
 <div class="empty-state"><p>暂无成绩数据</p></div>
 {% endif %}
 {% endblock %}

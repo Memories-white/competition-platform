@@ -172,14 +172,28 @@ def get_available_templates() -> list[dict]:
     return templates
 
 
-def get_expose_port_from_dockerfile(dockerfile_content: str) -> int:
+def get_expose_ports_from_dockerfile(dockerfile_content: str) -> list[int]:
+    """返回 Dockerfile 中所有 EXPOSE 端口（排序后，Web 端口在后）。"""
+    ports = []
     for line in dockerfile_content.split("\n"):
         stripped = line.strip().upper()
         if stripped.startswith("EXPOSE"):
             parts = stripped.split()
-            if len(parts) >= 2:
+            for p in parts[1:]:
                 try:
-                    return int(parts[1].split("/")[0])
+                    ports.append(int(p.split("/")[0]))
                 except ValueError:
                     pass
-    return 80
+    # 排序：SSH (22) 在前，Web 端口 (80, 443, 5000 等) 在后
+    ssh_ports = [p for p in ports if p == 22]
+    web_ports = [p for p in ports if p != 22]
+    return ssh_ports + web_ports
+
+
+def get_expose_port_from_dockerfile(dockerfile_content: str) -> int:
+    """返回主端口 (SSH)，若未暴露 SSH 端口则回退到 22。"""
+    ports = get_expose_ports_from_dockerfile(dockerfile_content)
+    ssh = [p for p in ports if p == 22]
+    if ssh:
+        return 22
+    return ports[0] if ports else 80

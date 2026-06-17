@@ -10,7 +10,7 @@ from docker_engine.manager import (
 
 
 def judge_environment(env: Environment) -> dict:
-    """Judge a single environment. Returns result dict."""
+    """对单个环境进行判题，返回结果字典。"""
     challenge = env.challenge
     if not challenge or not env.container_id:
         return {"passed": False, "score": 0, "error": "无效的环境或题目"}
@@ -70,15 +70,15 @@ def judge_environment(env: Environment) -> dict:
 
 
 def judge_all_for_competition(competition_id: int) -> dict:
-    """Judge all environments for a competition. Called by scheduler.
-    Only judges Docker-type challenges; exam challenges are scored on submission."""
+    """对竞赛的所有环境进行判题，由调度器调用。
+    仅判题 Docker 类题目；试卷类题目在提交时已评分。"""
     envs = Environment.query.filter_by(competition_id=competition_id).all()
     results = {"judged": 0, "passed": 0, "details": []}
 
     for env in envs:
         if not env.container_id:
             continue
-        # Skip exam challenges (no container to judge)
+        # 跳过试卷题目（没有容器可判）
         if env.challenge and env.challenge.challenge_type == "exam":
             continue
         result = judge_environment(env)
@@ -95,7 +95,7 @@ def judge_all_for_competition(competition_id: int) -> dict:
 
 
 def submit_for_judge(env_id: int) -> dict:
-    """Manual submission for judging by a contestant."""
+    """选手手动提交判题请求。"""
     env = db.session.get(Environment, env_id)
     if not env:
         return {"success": False, "error": "环境不存在"}
@@ -112,7 +112,7 @@ def submit_for_judge(env_id: int) -> dict:
 
 
 def get_user_scores(user_id: int, competition_id: int = None) -> list:
-    """Get scores for a user."""
+    """获取用户的成绩列表。"""
     q = Score.query.filter_by(user_id=user_id)
     if competition_id:
         q = q.filter_by(competition_id=competition_id)
@@ -127,7 +127,7 @@ def get_user_scores(user_id: int, competition_id: int = None) -> list:
 
 
 def judge_exam(challenge_id: int, user_id: int, answers: dict) -> dict:
-    """Judge exam answers and save score."""
+    """批改试卷答案并保存成绩。"""
     challenge = db.session.get(Challenge, challenge_id)
     if not challenge or challenge.challenge_type != "exam":
         return {"success": False, "error": "无效的试卷题目"}
@@ -193,7 +193,7 @@ def judge_exam(challenge_id: int, user_id: int, answers: dict) -> dict:
 
 
 def get_scoreboard(competition_id: int) -> list:
-    """Get the scoreboard for a competition."""
+    """获取竞赛排行榜。"""
     from models.models import User
     from sqlalchemy import func
 

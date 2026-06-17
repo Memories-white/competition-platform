@@ -1,73 +1,122 @@
+<!--
+  管理后台 - 仪表盘页面
+  ---------------------------------------------------------------------------
+  页面用途：管理员登录后看到的首页概览，展示系统核心指标的统计卡片、
+           快速操作入口和竞赛管理流程指引。
+  数据来源：后端传入 comp_count（竞赛总数）、active_count（进行中竞赛数）、
+           user_count（选手总数）、running_count（运行中环境数）、env_count（环境总数）。
+  路由对应：admin.dashboard（由 Flask 蓝图 /admin 下的 dashboard 视图渲染）
+-->
 {% extends "base.html" %}
+{# 继承基础模板 base.html，复用导航栏、侧边栏、全局样式和脚本 #}
 {% block title %}管理仪表盘{% endblock %}
+{# 设置浏览器标签页标题为"管理仪表盘" #}
 
 {% block content %}
+{# 开始填充 content 块 —— 这是 base.html 中预留的主体内容区域 #}
+
+<!-- ==================== 页面标题栏 ==================== -->
 <div class="page-header">
     <h4><i class="bi bi-speedometer2"></i> 仪表盘</h4>
+    <!-- Bootstrap Icons 图标：speedometer2（速度表），视觉上表示"仪表盘"概念 -->
 </div>
 
+<!-- ==================== 统计卡片行（4 列） ==================== -->
+{# 一行四个统计卡片，使用 Bootstrap 栅格 col-md-3（中等屏幕以上各占 25%） #}
 <div class="row g-4 mb-4">
+    <!-- 卡片1：竞赛总数 -->
     <div class="col-md-3">
         <div class="stat-card">
             <div class="stat-icon" style="background:#EEF2FF;color:var(--c-brand);">
                 <i class="bi bi-trophy"></i>
+                <!-- 奖杯图标，主题色背景 -->
             </div>
             <div class="stat-value">{{ comp_count }}</div>
+            {# 后端传入的竞赛总数变量 #}
             <div class="stat-label">竞赛总数</div>
         </div>
     </div>
+
+    <!-- 卡片2：进行中的竞赛数 -->
     <div class="col-md-3">
         <div class="stat-card">
             <div class="stat-icon" style="background:#ECFDF5;color:var(--c-success);">
                 <i class="bi bi-play-circle"></i>
+                <!-- 播放图标，绿色背景表示活跃状态 -->
             </div>
             <div class="stat-value">{{ active_count }}</div>
+            {# 后端传入的进行中竞赛数量 #}
             <div class="stat-label">进行中</div>
         </div>
     </div>
+
+    <!-- 卡片3：参赛选手总数 -->
     <div class="col-md-3">
         <div class="stat-card">
             <div class="stat-icon" style="background:#FFFBEB;color:var(--c-warning);">
                 <i class="bi bi-people"></i>
+                <!-- 人物图标，黄色背景 -->
             </div>
             <div class="stat-value">{{ user_count }}</div>
+            {# 后端传入的注册选手总数 #}
             <div class="stat-label">参赛选手</div>
         </div>
     </div>
+
+    <!-- 卡片4：运行中环境 / 总环境数 -->
     <div class="col-md-3">
         <div class="stat-card">
             <div class="stat-icon" style="background:#EFF6FF;color:var(--c-info);">
                 <i class="bi bi-hdd-stack"></i>
+                <!-- 磁盘堆叠图标，蓝色背景代表基础设施 -->
             </div>
             <div class="stat-value">{{ running_count }}<small class="text-muted fs-6 fw-normal"> / {{ env_count }}</small></div>
+            {# running_count: 当前正在运行的容器环境数；env_count: 系统管理的环境总数 #}
             <div class="stat-label">运行中 / 总环境</div>
         </div>
     </div>
 </div>
 
+<!-- ==================== 功能卡片行（2 列） ==================== -->
 <div class="row g-4">
+    <!-- 卡片1：快速操作区 -->
     <div class="col-lg-6">
         <div class="card">
             <div class="card-header"><i class="bi bi-lightning-fill text-warning me-2"></i>快速操作</div>
+            <!-- 闪电图标 + 标题"快速操作" -->
             <div class="card-body">
                 <p class="text-muted small">完整的竞赛管理流程：创建竞赛 → 添加题目 → 构建镜像 → 部署环境 → 查看成绩</p>
+                <!-- 一行简述完整工作流，帮助管理员快速理解操作顺序 -->
                 <div class="d-flex gap-2">
+                    <!-- 跳转到竞赛管理页面的按钮 -->
                     <a href="{{ url_for('admin.competitions') }}" class="btn btn-primary"><i class="bi bi-trophy"></i> 竞赛管理</a>
+                    {# url_for('admin.competitions') 生成 Flask 蓝图路由 URL，指向竞赛列表管理页 #}
+                    <!-- 跳转到用户管理页面的按钮 -->
                     <a href="{{ url_for('admin.users') }}" class="btn btn-outline-primary"><i class="bi bi-people"></i> 用户管理</a>
+                    {# url_for('admin.users') 生成用户管理页 URL #}
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- 卡片2：使用流程指引 -->
     <div class="col-lg-6">
         <div class="card">
             <div class="card-header"><i class="bi bi-info-circle text-info me-2"></i>使用流程</div>
+            <!-- 信息图标 + 标题"使用流程" -->
             <div class="card-body">
                 <ol class="small mb-0" style="line-height:2;">
+                    <!-- 有序列表列出竞赛管理的 5 个标准步骤 -->
                     <li><strong>创建竞赛</strong> — 设置名称、时间、资源限制</li>
+                    {# 步骤1：在竞赛管理页创建新竞赛，配置基本信息 #}
                     <li><strong>添加题目</strong> — 编写 Dockerfile 或选择模板，系统自动构建镜像</li>
+                    {# 步骤2：为竞赛添加编程题目，系统自动构建对应的 Docker 镜像 #}
                     <li><strong>创建选手</strong> — 在用户管理中批量创建测试账号</li>
+                    {# 步骤3：在用户管理页为参赛者创建登录账号 #}
                     <li><strong>一键部署</strong> — 为所有选手创建独立容器</li>
+                    {# 步骤4：一键部署功能：为每个选手分配独立的 Docker 容器运行环境 #}
                     <li><strong>查看成绩</strong> — 自动判题 + 实时排名</li>
+                    {# 步骤5：系统自动评判选手提交的代码/答案，生成实时排行榜 #}
                 </ol>
             </div>
         </div>

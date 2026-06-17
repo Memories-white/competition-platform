@@ -1,3 +1,8 @@
+<!--
+  选手环境详情页
+  显示单个题目的说明、容器 SSH/Web 连接信息，支持提交判题和销毁环境。
+  这是选手完成比赛操作的核心页面。
+-->
 {% extends "base.html" %}
 {% block title %}{{ challenge.title }} - 竞赛环境{% endblock %}
 
@@ -12,7 +17,7 @@
 
 <div class="row g-4">
     <div class="col-lg-8">
-        <!-- Challenge Info -->
+        {# ══════ 题目说明卡片 ══════ #}
         <div class="card mb-4">
             <div class="card-header"><i class="bi bi-info-circle me-2"></i>题目说明</div>
             <div class="card-body">
@@ -20,6 +25,7 @@
                 <hr>
                 <div class="row small text-muted">
                     <div class="col-4"><strong>分值</strong>：{{ challenge.points }} 分</div>
+                    {# 判题类型中文映射 #}
                     <div class="col-4"><strong>判题</strong>：{{ {'port':'端口检测','command':'命令执行','file':'文件检测'}.get(challenge.judge_type, challenge.judge_type) }}</div>
                     <div class="col-4"><strong>状态</strong>：
                         <span class="badge bg-{{ 'success' if env.status=='running' else 'warning' }}">{{ {'running':'运行中','stopped':'已停止','pending':'等待中'}.get(env.status, env.status) }}</span>
@@ -28,7 +34,9 @@
             </div>
         </div>
 
-        <!-- Container Info -->
+        {# ══════ 容器访问卡片 ══════
+           显示 SSH 连接命令和 Web 访问地址。
+           SSH 端口映射到 env.host_port，Web 端口映射到 env.web_port。 #}
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-terminal-fill me-2"></i>容器访问</span>
@@ -39,6 +47,7 @@
                 {% endif %}
             </div>
             <div class="card-body">
+                {# 容器元信息 #}
                 <div class="small text-muted mb-3">
                     <p class="mb-1"><strong>容器名称：</strong><code>{{ env.container_name }}</code></p>
                     <p class="mb-1"><strong>宿主机端口：</strong><code>{{ env.host_port }}</code></p>
@@ -46,7 +55,7 @@
                 </div>
 
                 {% if env.host_port and status and status.status == 'running' %}
-                <!-- SSH Connection (Primary) -->
+                {# SSH 连接方式（主要操作入口） #}
                 <div class="alert alert-primary small mb-3">
                     <i class="bi bi-terminal-fill me-1"></i>
                     <strong>SSH 连接</strong>
@@ -57,6 +66,7 @@
                             <i class="bi bi-clipboard"></i> 复制
                         </button>
                     </div>
+                    {# 登录信息（如 root/password） #}
                     {% if challenge.login_info %}
                     <hr class="my-2">
                     <i class="bi bi-key me-1"></i>
@@ -64,21 +74,21 @@
                     {% endif %}
                 </div>
 
-                <!-- Web URL (only for web-service challenges) -->
-                {% if challenge.judge_type == 'port' and challenge.judge_config and ('"port": 80' in challenge.judge_config or '"port": 443' in challenge.judge_config or '"port": 5000' in challenge.judge_config or '"port": 3000' in challenge.judge_config or '"port": 8080' in challenge.judge_config) %}
+                {# Web 访问入口（仅当有 web_port 时显示） #}
+                {% if env.web_port and env.web_port > 0 %}
                 <div class="alert alert-success small mb-3">
                     <i class="bi bi-link-45deg me-1"></i>
                     <strong>Web 访问：</strong>
-                    <a href="http://{{ host_ip }}:{{ env.host_port }}" target="_blank" class="fw-bold">
-                        http://{{ host_ip }}:{{ env.host_port }}
+                    <a href="http://{{ host_ip }}:{{ env.web_port }}" target="_blank" class="fw-bold">
+                        http://{{ host_ip }}:{{ env.web_port }}
                     </a>
-                    <button class="btn btn-outline-success btn-sm ms-2" onclick="copyUrl('http://{{ host_ip }}:{{ env.host_port }}')">
+                    <button class="btn btn-outline-success btn-sm ms-2" onclick="copyUrl('http://{{ host_ip }}:{{ env.web_port }}')">
                         <i class="bi bi-clipboard"></i> 复制
                     </button>
                 </div>
                 {% endif %}
 
-                <!-- docker exec fallback -->
+                {# 管理员应急入口 #}
                 <div class="small text-muted">
                     <i class="bi bi-info-circle me-1"></i> 管理员可通过 <code>docker exec -it {{ env.container_name }} bash</code> 进入容器
                 </div>
@@ -88,7 +98,9 @@
     </div>
 
     <div class="col-lg-4">
-        <!-- Submit -->
+        {# ══════ 提交判题卡片 ══════
+           选手完成任务后点击提交，后端检测端口/命令/文件是否满足要求。
+           通过后自动记录成绩。 #}
         <div class="card mb-4">
             <div class="card-header"><i class="bi bi-check2-circle me-2"></i>提交判题</div>
             <div class="card-body">
@@ -111,7 +123,7 @@
             </div>
         </div>
 
-        <!-- Env Info -->
+        {# ══════ 环境信息卡片 ══════ #}
         <div class="card mb-4">
             <div class="card-header"><i class="bi bi-gear me-2"></i>环境信息</div>
             <div class="card-body small">
@@ -126,7 +138,8 @@
             </div>
         </div>
 
-        <!-- Destroy -->
+        {# ══════ 危险操作：销毁环境 ══════
+           删除容器，不可恢复。 #}
         <div class="card border-danger">
             <div class="card-header text-danger"><i class="bi bi-exclamation-triangle me-2"></i>危险操作</div>
             <div class="card-body">
@@ -145,6 +158,7 @@
 
 {% block extra_scripts %}
 <script>
+// ── 复制 Web 访问地址到剪贴板 ──
 function copyUrl(url) {
     navigator.clipboard.writeText(url).then(() => {
         alert('链接已复制到剪贴板');
@@ -153,6 +167,7 @@ function copyUrl(url) {
     });
 }
 
+// ── 复制 SSH 连接命令到剪贴板 ──
 function copyCmd() {
     const cmd = document.getElementById('sshCmd').textContent;
     navigator.clipboard.writeText(cmd).then(() => {
@@ -162,9 +177,13 @@ function copyCmd() {
     });
 }
 
+// ── 提交判题 ──
+// 发送 POST /contestant/environment/<envId>/submit
+// 后端调用 judge_environment()，返回 passed + score
 async function submitJudge(envId) {
     const btn = document.getElementById('submitJudgeBtn');
     const resultDiv = document.getElementById('judgeResult');
+    // 按钮禁用 + 加载动画
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 判题中...';
 
@@ -173,21 +192,28 @@ async function submitJudge(envId) {
         const data = await resp.json();
         resultDiv.style.display = 'block';
         if (data.success && data.passed) {
+            // 通过：显示绿色提示，1.5 秒后刷新
             resultDiv.innerHTML = '<div class="alert alert-success small"><i class="bi bi-check-circle-fill"></i> <strong>通过！</strong> 得分：' + data.score + ' 分</div>';
             setTimeout(() => location.reload(), 1500);
         } else if (data.success) {
+            // 未通过：黄色警告
             resultDiv.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-circle-fill"></i> 未通过，请检查任务是否完成</div>';
         } else {
+            // 错误：红色提示
             resultDiv.innerHTML = '<div class="alert alert-danger small"><i class="bi bi-x-circle-fill"></i> ' + (data.error || '未知错误') + '</div>';
         }
     } catch (e) {
         resultDiv.style.display = 'block';
         resultDiv.innerHTML = '<div class="alert alert-danger small">请求失败：' + e.message + '</div>';
     }
+    // 恢复按钮
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-send"></i> 重新判题';
 }
 
+// ── 销毁环境 ──
+// 发送 POST /contestant/environment/<envId>/destroy
+// 后端调用 remove_container() 删除 Docker 容器和环境记录
 async function destroyEnv(envId) {
     if (!confirm('确定要销毁此环境吗？容器将被永久删除，此操作不可撤销。')) return;
 
