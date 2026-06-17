@@ -213,7 +213,21 @@
                             </select>
                         </div>
                     </div>
-                    <div class="mb-3"><label class="form-label">题目描述</label><textarea class="form-control" name="description" rows="2" placeholder="选手需要完成的任务说明"></textarea></div>
+                    <div class="mb-3">
+                        <label class="form-label">题目描述</label>
+                        <textarea class="form-control" name="description" id="createDesc" rows="2" placeholder="选手需要完成的任务说明"></textarea>
+                    </div>
+                    {% if presets %}
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-journal-bookmark-fill me-1"></i>从题库选择（可选）</label>
+                        <select class="form-select" id="presetSelector" onchange="applyPreset()">
+                            <option value="">— 手动填写 —</option>
+                            {% for p in presets %}
+                            <option value="{{ p.id }}" data-title="{{ p.title }}" data-desc="{{ p.description }}">{{ p.title }}（{{ p.category }} / {{ p.difficulty }}）</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
                     <div id="createDockerFields">
                         <div class="mb-2">
                             <label class="form-label">登录信息 <small class="text-muted">（如：SSH root / password）</small></label>
@@ -624,6 +638,14 @@ if (activeTab) {
     const tab = document.querySelector(`[data-bs-target="${activeTab}"]`);
     if (tab) new bootstrap.Tab(tab).show();
 }
+function applyPreset() {
+    const sel = document.getElementById('presetSelector');
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt.value) return;
+    document.querySelector('#createChallengeModal input[name="title"]').value = opt.dataset.title;
+    document.querySelector('#createChallengeModal textarea[name="description"]').value = opt.dataset.desc;
+}
+
 document.querySelectorAll('#compTabs button').forEach(btn => {
     btn.addEventListener('shown.bs.tab', e => sessionStorage.setItem('compActiveTab', e.target.dataset.bsTarget));
 });

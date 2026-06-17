@@ -7,6 +7,7 @@ from models import db
 from models.models import Competition, Challenge, Environment, Score, User, ExamQuestion
 from docker_engine.builder import build_image, build_image_from_template, get_image_info, get_available_templates
 from docker_engine.manager import get_container_status, start_container, stop_container, remove_container
+from data.presets import PRESETS
 from services.environment_service import (
     deploy_competition_environments,
     stop_all_environments,
@@ -196,7 +197,8 @@ def competition_detail(comp_id):
                            competition=comp, challenges=challenges_list,
                            templates=templates, environments=envs,
                            rankings=rankings, score_lookup=score_lookup,
-                           exam_questions_map=exam_questions_map)
+                           exam_questions_map=exam_questions_map,
+                           presets=PRESETS)
 
 
 @admin_bp.route("/competitions/<int:comp_id>/challenges")
