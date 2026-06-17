@@ -113,6 +113,13 @@ def _migrate_database(app):
             conn.commit()
             logger.info("Migration: added scores.answers")
 
+        # challenges.login_info
+        chal_cols = [c["name"] for c in inspector.get_columns("challenges")]
+        if "login_info" not in chal_cols:
+            conn.execute(text("ALTER TABLE challenges ADD COLUMN login_info VARCHAR(200) DEFAULT ''"))
+            conn.commit()
+            logger.info("Migration: added challenges.login_info")
+
         # competition.auto_deployed and deployed_at
         comp_cols = [c["name"] for c in inspector.get_columns("competitions")]
         if "auto_deployed" not in comp_cols:

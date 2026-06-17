@@ -67,6 +67,7 @@ class Challenge(db.Model):
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, default="")
     challenge_type = db.Column(db.String(20), default="docker")  # docker | exam
+    login_info = db.Column(db.String(200), default="")  # e.g. "SSH: root / password"
     dockerfile_content = db.Column(db.Text, default="")
     judge_type = db.Column(db.String(20), default="port")  # port | command | file
     judge_config = db.Column(db.Text, default="{}")
@@ -87,6 +88,7 @@ class Challenge(db.Model):
             "title": self.title,
             "description": self.description,
             "challenge_type": self.challenge_type,
+            "login_info": self.login_info,
             "judge_type": self.judge_type,
             "judge_config": self.judge_config,
             "points": self.points,

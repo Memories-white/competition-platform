@@ -49,6 +49,11 @@
                     <strong>如何操作？</strong><br>
                     连接到容器：<code>docker exec -it {{ env.container_name }} bash</code><br>
                     或通过 SSH：<code>ssh root@localhost -p {{ env.host_port }}</code>
+                    {% if challenge.login_info %}
+                    <hr class="my-2">
+                    <i class="bi bi-key me-1"></i>
+                    <strong>登录信息：</strong><span class="text-success">{{ challenge.login_info }}</span>
+                    {% endif %}
                 </div>
             </div>
         </div>

@@ -215,6 +215,10 @@
                     </div>
                     <div class="mb-3"><label class="form-label">题目描述</label><textarea class="form-control" name="description" rows="2" placeholder="选手需要完成的任务说明"></textarea></div>
                     <div id="createDockerFields">
+                        <div class="mb-2">
+                            <label class="form-label">登录信息 <small class="text-muted">（如：SSH root / password）</small></label>
+                            <input type="text" class="form-control form-control-sm" name="login_info" placeholder="留空则不显示。例：SSH 用户名 root 密码 password">
+                        </div>
                         <div class="row mb-3">
                             <div class="col-6">
                                 <label class="form-label">判题方式</label>
@@ -275,6 +279,10 @@
                     </div>
                     <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea></div>
                     <div id="editDockerFields{{ chal.id }}" {{ 'style=display:none;' if chal.challenge_type=='exam' }}>
+                        <div class="mb-2">
+                            <label class="form-label">登录信息 <small class="text-muted">（如：SSH root / password）</small></label>
+                            <input type="text" class="form-control form-control-sm" name="login_info" value="{{ chal.login_info or '' }}" placeholder="留空则不显示。例：SSH 用户名 root 密码 password">
+                        </div>
                         <div class="row mb-3">
                             <div class="col-6">
                                 <label class="form-label">判题方式</label>

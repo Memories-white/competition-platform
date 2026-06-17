@@ -216,6 +216,7 @@ def create_challenge(comp_id):
     title = request.form.get("title", "").strip()
     description = request.form.get("description", "").strip()
     challenge_type = request.form.get("challenge_type", "docker").strip()
+    login_info = request.form.get("login_info", "").strip()
     dockerfile_content = request.form.get("dockerfile_content", "").strip()
     template_name = request.form.get("template_name", "").strip()
     judge_type = request.form.get("judge_type", "port")
@@ -232,6 +233,7 @@ def create_challenge(comp_id):
         title=title,
         description=description,
         challenge_type=challenge_type,
+        login_info=login_info,
         dockerfile_content=dockerfile_content,
         judge_type=judge_type,
         judge_config=judge_config,
@@ -276,6 +278,7 @@ def edit_challenge(challenge_id):
     challenge.title = request.form.get("title", challenge.title).strip()
     challenge.description = request.form.get("description", challenge.description).strip()
     challenge.challenge_type = request.form.get("challenge_type", challenge.challenge_type)
+    challenge.login_info = request.form.get("login_info", challenge.login_info or "").strip()
     challenge.judge_type = request.form.get("judge_type", challenge.judge_type)
     challenge.judge_config = request.form.get("judge_config", challenge.judge_config)
     challenge.points = int(request.form.get("points", challenge.points))
