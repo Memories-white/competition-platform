@@ -284,6 +284,9 @@ def _sync_orphan_containers(app):
         logger.info(f"Sync containers: {synced} orphan containers recovered to database")
     else:
         logger.info("Sync containers: no orphans found")
+
+
+def _seed_admin(app):
     from models.models import User
     import bcrypt
 
