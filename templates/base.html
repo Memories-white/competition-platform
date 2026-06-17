@@ -24,7 +24,12 @@
 
     <nav class="sidebar-nav">
     {% if current_user.role == 'admin' %}
-        <div class="nav-label">竞赛</div>
+        <a class="nav-item {{ 'active' if request.path == '/admin/' else '' }}"
+           href="{{ url_for('admin.dashboard') }}">
+            <i class="bi bi-speedometer2"></i> 仪表盘
+        </a>
+
+        <div class="nav-label">管理</div>
         <a class="nav-item {{ 'active' if request.path.startswith('/admin/') and 'competition' in request.path and 'logs' not in request.path else '' }}"
            href="{{ url_for('admin.competitions') }}">
             <i class="bi bi-trophy"></i> 竞赛管理
@@ -38,10 +43,6 @@
         <a class="nav-item {{ 'active' if request.path.startswith('/admin/logs') else '' }}"
            href="{{ url_for('admin.logs') }}">
             <i class="bi bi-journal-text"></i> 系统日志
-        </a>
-        <a class="nav-item {{ 'active' if request.path == '/admin/' else '' }}"
-           href="{{ url_for('admin.dashboard') }}">
-            <i class="bi bi-speedometer2"></i> 仪表盘
         </a>
     {% else %}
         <div class="nav-label">比赛</div>
@@ -59,13 +60,13 @@
     <div class="sidebar-bottom">
         <div class="sidebar-user">
             <div class="avatar"><i class="bi bi-person-fill"></i></div>
-            <div>
-                <div style="color:#E5E7EB;font-weight:500;line-height:1.2;">{{ current_user.username }}</div>
-                <div style="font-size:.72rem;color:#6B7280;">{{ '管理员' if current_user.role=='admin' else current_user.team_name or '选手' }}</div>
+            <div class="user-meta">
+                <div class="user-name">{{ current_user.username }}</div>
+                <div class="user-role">{{ '管理员' if current_user.role=='admin' else current_user.team_name or '选手' }}</div>
             </div>
         </div>
         <a href="{{ url_for('auth.logout') }}" class="btn-logout">
-            <i class="bi bi-box-arrow-right"></i> 退出登录
+            <i class="bi bi-box-arrow-right"></i> 退出
         </a>
     </div>
 </aside>
