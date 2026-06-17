@@ -17,3 +17,8 @@ class Config:
     CLEANUP_INTERVAL_SECONDS = 120
 
     DOCKER_TEMPLATES_DIR = os.path.join(BASE_DIR, "docker_templates")
+
+    # 选手访问容器的主机 IP（部署到云服务器时改为公网 IP）
+    HOST_IP = os.environ.get("HOST_IP", "localhost")
+    # Docker 远程主机（空 = 本地，支持 tcp://1.2.3.4:2375 远程连接）
+    DOCKER_HOST = os.environ.get("DOCKER_HOST", "")

@@ -79,9 +79,14 @@ def environment_detail(env_id):
         challenge_id=env.challenge_id,
     ).first()
 
+    host_ip = request.host.split(":")[0] if request.host else "localhost"
+    from config import Config
+    if Config.HOST_IP and Config.HOST_IP != "localhost":
+        host_ip = Config.HOST_IP
+
     return render_template("contestant/environment.html",
                            env=env, status=status, challenge=challenge,
-                           score=score_record)
+                           score=score_record, host_ip=host_ip)
 
 
 @contestant_bp.route("/environment/<int:env_id>/submit", methods=["POST"])
@@ -93,6 +98,26 @@ def submit_judge(env_id):
 
     result = submit_for_judge(env_id)
     return jsonify(result)
+
+
+@contestant_bp.route("/environment/<int:env_id>/destroy", methods=["POST"])
+@contestant_required
+def destroy_environment(env_id):
+    env = db.session.get(Environment, env_id)
+    if not env or env.user_id != session["user_id"]:
+        return jsonify({"success": False, "error": "无权操作"}), 403
+
+    from docker_engine.manager import remove_container, stop_container
+
+    if env.container_id:
+        stop_container(env.container_id)
+        remove_container(env.container_id)
+
+    env.status = "removed"
+    env.container_id = ""
+    db.session.commit()
+
+    return jsonify({"success": True, "message": "环境已销毁"})
 
 
 @contestant_bp.route("/scoreboard")
