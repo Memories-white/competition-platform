@@ -1,9 +1,9 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from functools import wraps
 from models import db
-from models.models import Competition, Challenge, Environment, Score, User
+from models.models import Competition, Challenge, Environment, Score, User, ExamQuestion
 from services.environment_service import get_user_environments
-from services.judge_service import submit_for_judge, get_user_scores, get_scoreboard
+from services.judge_service import submit_for_judge, get_user_scores, get_scoreboard, judge_exam
 
 contestant_bp = Blueprint("contestant", __name__)
 
@@ -41,9 +41,13 @@ def dashboard():
         scores = get_user_scores(user_id, comp.id)
         total_score = sum(s["score"] for s in scores)
         total_possible = sum(c.points for c in comp.challenges)
+        exam_challenges = [c for c in comp.challenges if c.challenge_type == "exam"]
+        exam_scores = {s["challenge_id"]: s for s in scores if s.get("challenge_id")}
         comps_data.append({
             "competition": comp,
             "environments": envs,
+            "exam_challenges": exam_challenges,
+            "exam_scores": exam_scores,
             "total_score": total_score,
             "total_possible": total_possible,
             "passed_count": sum(1 for s in scores if s["passed"]),
@@ -113,3 +117,51 @@ def scoreboard():
                            competitions=competitions,
                            current_comp=current_comp,
                            rankings=rankings)
+
+
+# ── Exam ──
+
+@contestant_bp.route("/exam/<int:challenge_id>")
+@contestant_required
+def exam_page(challenge_id):
+    challenge = db.session.get(Challenge, challenge_id)
+    if not challenge or challenge.challenge_type != "exam":
+        flash("无效的试卷题目", "error")
+        return redirect(url_for("contestant.dashboard"))
+
+    questions = ExamQuestion.query.filter_by(challenge_id=challenge_id).order_by(ExamQuestion.order).all()
+
+    import json
+    for q in questions:
+        try:
+            q.options_list = json.loads(q.options) if q.options else []
+        except (json.JSONDecodeError, TypeError):
+            q.options_list = []
+
+    existing_score = Score.query.filter_by(
+        competition_id=challenge.competition_id,
+        user_id=session["user_id"],
+        challenge_id=challenge_id,
+    ).first()
+
+    return render_template("contestant/exam.html",
+                           challenge=challenge,
+                           questions=questions,
+                           existing_score=existing_score)
+
+
+@contestant_bp.route("/exam/<int:challenge_id>/submit", methods=["POST"])
+@contestant_required
+def exam_submit(challenge_id):
+    challenge = db.session.get(Challenge, challenge_id)
+    if not challenge or challenge.challenge_type != "exam":
+        return jsonify({"success": False, "error": "无效的试卷题目"}), 400
+
+    answers = {}
+    for key, value in request.form.items():
+        if key.startswith("q_"):
+            q_id = key[2:]
+            answers[q_id] = value.strip()
+
+    result = judge_exam(challenge_id, session["user_id"], answers)
+    return jsonify(result)

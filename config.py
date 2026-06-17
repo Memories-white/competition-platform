@@ -13,5 +13,6 @@ class Config:
     CONTAINER_NETWORK = "comp_network"
 
     JUDGE_INTERVAL_SECONDS = 30
+    CLEANUP_INTERVAL_SECONDS = 120
 
     DOCKER_TEMPLATES_DIR = os.path.join(BASE_DIR, "docker_templates")

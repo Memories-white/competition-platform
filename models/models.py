@@ -63,9 +63,10 @@ class Challenge(db.Model):
     competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, default="")
+    challenge_type = db.Column(db.String(20), default="docker")  # docker | exam
     dockerfile_content = db.Column(db.Text, default="")
     judge_type = db.Column(db.String(20), default="port")  # port | command | file
-    judge_config = db.Column(db.Text, default="{}")  # JSON: {port:80} | {cmd:"curl localhost"} | {path:"/etc/nginx/nginx.conf"}
+    judge_config = db.Column(db.Text, default="{}")
     points = db.Column(db.Integer, default=100)
     order = db.Column(db.Integer, default=0)
     image_tag = db.Column(db.String(200), default="")
@@ -73,6 +74,8 @@ class Challenge(db.Model):
 
     environments = db.relationship("Environment", backref="challenge", lazy=True)
     scores = db.relationship("Score", backref="challenge", lazy=True)
+    exam_questions = db.relationship("ExamQuestion", backref="challenge", lazy=True, cascade="all, delete-orphan",
+                                     order_by="ExamQuestion.order")
 
     def to_dict(self):
         return {
@@ -80,11 +83,37 @@ class Challenge(db.Model):
             "competition_id": self.competition_id,
             "title": self.title,
             "description": self.description,
+            "challenge_type": self.challenge_type,
             "judge_type": self.judge_type,
             "judge_config": self.judge_config,
             "points": self.points,
             "order": self.order,
             "image_tag": self.image_tag,
+        }
+
+
+class ExamQuestion(db.Model):
+    __tablename__ = "exam_questions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id"), nullable=False)
+    question_type = db.Column(db.String(20), nullable=False)  # single_choice | true_false | fill_blank
+    question_text = db.Column(db.Text, nullable=False)
+    options = db.Column(db.Text, default="[]")  # JSON array
+    answer = db.Column(db.String(500), nullable=False)
+    points = db.Column(db.Integer, default=0)
+    order = db.Column(db.Integer, default=0)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "challenge_id": self.challenge_id,
+            "question_type": self.question_type,
+            "question_text": self.question_text,
+            "options": self.options,
+            "answer": self.answer,
+            "points": self.points,
+            "order": self.order,
         }
 
 
@@ -124,6 +153,7 @@ class Score(db.Model):
     score = db.Column(db.Integer, default=0)
     passed = db.Column(db.Boolean, default=False)
     judged_at = db.Column(db.DateTime)
+    answers = db.Column(db.Text, default="")  # JSON for exam answers
 
     def to_dict(self):
         return {
@@ -134,4 +164,5 @@ class Score(db.Model):
             "score": self.score,
             "passed": self.passed,
             "judged_at": self.judged_at.isoformat() if self.judged_at else None,
+            "answers": self.answers,
         }

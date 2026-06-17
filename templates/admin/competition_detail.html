@@ -61,15 +61,25 @@
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h6 class="mb-0">#{{ chal.order }} {{ chal.title }}</h6>
+                        <h6 class="mb-0">
+                            #{{ chal.order }} {{ chal.title }}
+                            {% if chal.challenge_type == 'exam' %}<span class="badge bg-warning ms-1">试卷</span>{% endif %}
+                        </h6>
                         <span class="badge bg-primary">{{ chal.points }} 分</span>
                     </div>
                     <p class="text-muted small mb-2">{{ chal.description or '暂无描述' }}</p>
                     <div class="small text-muted mb-2">
+                        {% if chal.challenge_type == 'exam' %}
+                        试题数：<span class="badge bg-info">{{ exam_questions_map.get(chal.id, [])|length }}</span>
+                        {% else %}
                         判题：<span class="badge bg-secondary">{{ {'port':'端口','command':'命令','file':'文件'}.get(chal.judge_type, chal.judge_type) }}</span>
                         镜像：{% if chal.image_tag %}<span class="badge bg-success">已构建</span>{% else %}<span class="badge bg-warning">未构建</span>{% endif %}
+                        {% endif %}
                     </div>
                     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editChalModal{{ chal.id }}"><i class="bi bi-pencil"></i></button>
+                    {% if chal.challenge_type == 'exam' %}
+                    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#examQuestionsModal{{ chal.id }}"><i class="bi bi-list-ul"></i> 编辑试题</button>
+                    {% endif %}
                     <form method="POST" action="{{ url_for('admin.delete_challenge', challenge_id=chal.id) }}" class="d-inline" onsubmit="return confirm('确定删除此题目？')">
                         <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
                     </form>
@@ -192,34 +202,46 @@
                 <div class="modal-header"><h5 class="modal-title">添加新题目</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="row mb-3">
-                        <div class="col-6"><label class="form-label">题目标题 *</label><input type="text" class="form-control" name="title" required placeholder="例：Nginx 服务搭建"></div>
-                        <div class="col-3"><label class="form-label">分数</label><input type="number" class="form-control" name="points" value="100"></div>
-                        <div class="col-3"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="0"></div>
-                    </div>
-                    <div class="mb-3"><label class="form-label">题目描述</label><textarea class="form-control" name="description" rows="2" placeholder="选手需要完成的任务说明"></textarea></div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label class="form-label">判题方式</label>
-                            <select class="form-select" name="judge_type">
-                                <option value="port">端口检测</option>
-                                <option value="command">命令执行</option>
-                                <option value="file">文件检测</option>
+                        <div class="col-4"><label class="form-label">题目标题 *</label><input type="text" class="form-control" name="title" required placeholder="例：Nginx 服务搭建"></div>
+                        <div class="col-2"><label class="form-label">分数</label><input type="number" class="form-control" name="points" value="100"></div>
+                        <div class="col-2"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="0"></div>
+                        <div class="col-4">
+                            <label class="form-label">题目类型</label>
+                            <select class="form-select" name="challenge_type" id="createChallengeType" onchange="toggleDockerFields('create')">
+                                <option value="docker">Docker 实操</option>
+                                <option value="exam">试卷考试</option>
                             </select>
                         </div>
-                        <div class="col-6"><label class="form-label">判题配置 (JSON)</label><input type="text" class="form-control" name="judge_config" value='{"port": 80}' placeholder='{"port":80}'></div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">使用模板（可选）</label>
-                        <select class="form-select" name="template_name">
-                            <option value="">— 手动编写下方 Dockerfile —</option>
-                            {% for tpl in templates %}
-                            <option value="{{ tpl.name }}">{{ tpl.name }} — {{ tpl.description }}</option>
-                            {% endfor %}
-                        </select>
+                    <div class="mb-3"><label class="form-label">题目描述</label><textarea class="form-control" name="description" rows="2" placeholder="选手需要完成的任务说明"></textarea></div>
+                    <div id="createDockerFields">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label">判题方式</label>
+                                <select class="form-select" name="judge_type">
+                                    <option value="port">端口检测</option>
+                                    <option value="command">命令执行</option>
+                                    <option value="file">文件检测</option>
+                                </select>
+                            </div>
+                            <div class="col-6"><label class="form-label">判题配置 (JSON)</label><input type="text" class="form-control" name="judge_config" value='{"port": 80}' placeholder='{"port":80}'></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">使用模板（可选）</label>
+                            <select class="form-select" name="template_name">
+                                <option value="">— 手动编写下方 Dockerfile —</option>
+                                {% for tpl in templates %}
+                                <option value="{{ tpl.name }}">{{ tpl.name }} — {{ tpl.description }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Dockerfile</label>
+                            <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8" spellcheck="false" placeholder="FROM ubuntu:22.04&#10;RUN apt-get update && apt-get install -y nginx&#10;EXPOSE 80&#10;CMD [&quot;/bin/bash&quot;, &quot;-c&quot;, &quot;tail -f /dev/null&quot;]"></textarea>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Dockerfile</label>
-                        <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8" spellcheck="false" placeholder="FROM ubuntu:22.04&#10;RUN apt-get update && apt-get install -y nginx&#10;EXPOSE 80&#10;CMD [&quot;/bin/bash&quot;, &quot;-c&quot;, &quot;tail -f /dev/null&quot;]"></textarea>
+                    <div id="createExamNote" style="display:none;">
+                        <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>试卷题目创建后，请在题目卡片中点击「编辑试题」添加具体试题</div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -240,25 +262,34 @@
                 <div class="modal-header"><h5 class="modal-title">编辑：{{ chal.title }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="row mb-3">
-                        <div class="col-6"><label class="form-label">标题</label><input type="text" class="form-control" name="title" value="{{ chal.title }}" required></div>
-                        <div class="col-3"><label class="form-label">分数</label><input type="number" class="form-control" name="points" value="{{ chal.points }}"></div>
-                        <div class="col-3"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="{{ chal.order }}"></div>
-                    </div>
-                    <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea></div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label class="form-label">判题方式</label>
-                            <select class="form-select" name="judge_type">
-                                <option value="port" {{ 'selected' if chal.judge_type=='port' }}>端口检测</option>
-                                <option value="command" {{ 'selected' if chal.judge_type=='command' }}>命令执行</option>
-                                <option value="file" {{ 'selected' if chal.judge_type=='file' }}>文件检测</option>
+                        <div class="col-4"><label class="form-label">标题</label><input type="text" class="form-control" name="title" value="{{ chal.title }}" required></div>
+                        <div class="col-2"><label class="form-label">分数</label><input type="number" class="form-control" name="points" value="{{ chal.points }}"></div>
+                        <div class="col-2"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="{{ chal.order }}"></div>
+                        <div class="col-4">
+                            <label class="form-label">题目类型</label>
+                            <select class="form-select" name="challenge_type" id="editChallengeType{{ chal.id }}" onchange="toggleEditDockerFields({{ chal.id }})">
+                                <option value="docker" {{ 'selected' if chal.challenge_type=='docker' }}>Docker 实操</option>
+                                <option value="exam" {{ 'selected' if chal.challenge_type=='exam' }}>试卷考试</option>
                             </select>
                         </div>
-                        <div class="col-6"><label class="form-label">判题配置 (JSON)</label><input type="text" class="form-control" name="judge_config" value="{{ chal.judge_config }}"></div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Dockerfile（修改后自动重新构建）</label>
-                        <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8" spellcheck="false">{{ chal.dockerfile_content or '' }}</textarea>
+                    <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea></div>
+                    <div id="editDockerFields{{ chal.id }}" {{ 'style=display:none;' if chal.challenge_type=='exam' }}>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label">判题方式</label>
+                                <select class="form-select" name="judge_type">
+                                    <option value="port" {{ 'selected' if chal.judge_type=='port' }}>端口检测</option>
+                                    <option value="command" {{ 'selected' if chal.judge_type=='command' }}>命令执行</option>
+                                    <option value="file" {{ 'selected' if chal.judge_type=='file' }}>文件检测</option>
+                                </select>
+                            </div>
+                            <div class="col-6"><label class="form-label">判题配置 (JSON)</label><input type="text" class="form-control" name="judge_config" value="{{ chal.judge_config }}"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Dockerfile（修改后自动重新构建）</label>
+                            <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8" spellcheck="false">{{ chal.dockerfile_content or '' }}</textarea>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -270,10 +301,96 @@
     </div>
 </div>
 {% endfor %}
+
+<!-- ═══════════ EXAM QUESTION MODALS ═══════════ -->
+{% for chal in challenges %}
+{% if chal.challenge_type == 'exam' %}
+<div class="modal fade" id="examQuestionsModal{{ chal.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-list-ul me-2"></i>编辑试题：{{ chal.title }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Existing questions list -->
+                <h6 class="mb-3">已有试题 <span class="badge bg-primary" id="qCount{{ chal.id }}">{{ exam_questions_map.get(chal.id, [])|length }}</span></h6>
+                <div id="questionsList{{ chal.id }}" class="mb-4">
+                    {% for q in exam_questions_map.get(chal.id, []) %}
+                    <div class="card mb-2" id="qRow{{ q.id }}">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <span class="badge bg-{{ 'primary' if q.question_type=='single_choice' else 'success' if q.question_type=='true_false' else 'info' }} me-1">
+                                        {{ {'single_choice':'单选','true_false':'判断','fill_blank':'填空'}.get(q.question_type, q.question_type) }}
+                                    </span>
+                                    <strong>#{{ q.order }}</strong> {{ q.question_text }}
+                                    <span class="badge bg-secondary ms-2">{{ q.points }}分</span>
+                                    {% if q.options and q.options != '[]' %}<small class="text-muted ms-2">选项：{{ q.options }}</small>{% endif %}
+                                    <small class="text-success ms-2">答案：{{ q.answer }}</small>
+                                </div>
+                                <div class="d-flex gap-1 flex-shrink-0 ms-2">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="editQuestion({{ q.id }}, {{ chal.id }})" title="编辑"><i class="bi bi-pencil"></i></button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteQuestion({{ q.id }}, {{ chal.id }})" title="删除"><i class="bi bi-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small">暂无试题，请添加</p>
+                    {% endfor %}
+                </div>
+                <hr>
+                <!-- Add / Edit question form -->
+                <h6 class="mb-3" id="formTitle{{ chal.id }}">添加试题</h6>
+                <form id="questionForm{{ chal.id }}" onsubmit="return saveQuestion(event, {{ chal.id }})">
+                    <input type="hidden" name="edit_id" id="editId{{ chal.id }}" value="">
+                    <div class="row mb-2">
+                        <div class="col-3">
+                            <label class="form-label">题型</label>
+                            <select class="form-select form-select-sm" name="question_type" id="qType{{ chal.id }}" onchange="onQTypeChange({{ chal.id }})">
+                                <option value="single_choice">单选题</option>
+                                <option value="true_false">判断题</option>
+                                <option value="fill_blank">填空题</option>
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label">分值</label>
+                            <input type="number" class="form-control form-control-sm" name="points" value="10" min="1">
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label">排序</label>
+                            <input type="number" class="form-control form-control-sm" name="order" value="0">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label">正确答案 *</label>
+                            <input type="text" class="form-control form-control-sm" name="answer" id="answer{{ chal.id }}" placeholder="A / 正确 / nginx" required>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">题目内容 *</label>
+                        <input type="text" class="form-control form-control-sm" name="question_text" placeholder="例：HTTP 协议的默认端口是？" required>
+                    </div>
+                    <div class="mb-2" id="optionsRow{{ chal.id }}">
+                        <label class="form-label">选项（每行一个，如：A. 80）</label>
+                        <textarea class="form-control form-control-sm" name="options_text" rows="3" placeholder="A. 80&#10;B. 443&#10;C. 22&#10;D. 8080"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm" id="submitQBtn{{ chal.id }}">
+                        <i class="bi bi-plus-lg"></i> 添加试题
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="cancelEditBtn{{ chal.id }}" style="display:none;" onclick="cancelEdit({{ chal.id }})">取消编辑</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+// ── Deploy SocketIO ──
 const socket = io();
 const deployBtn = document.getElementById('deployBtn');
 const logContent = document.getElementById('logContent');
@@ -330,6 +447,166 @@ async function startDeploy() {
         addLog(`[错误] ${e.message}`, 'error');
         deployBtn.disabled = false;
         deployBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+    }
+}
+
+// ── Toggle Docker fields for create modal ──
+function toggleDockerFields(mode) {
+    const type = document.getElementById('createChallengeType').value;
+    document.getElementById('createDockerFields').style.display = type === 'docker' ? '' : 'none';
+    document.getElementById('createExamNote').style.display = type === 'exam' ? '' : 'none';
+}
+
+function toggleEditDockerFields(chalId) {
+    const type = document.getElementById('editChallengeType' + chalId).value;
+    document.getElementById('editDockerFields' + chalId).style.display = type === 'docker' ? '' : 'none';
+}
+
+// ── Exam Question type change ──
+function onQTypeChange(chalId) {
+    const type = document.getElementById('qType' + chalId).value;
+    const optionsRow = document.getElementById('optionsRow' + chalId);
+    const answerInput = document.getElementById('answer' + chalId);
+    if (type === 'fill_blank') {
+        optionsRow.style.display = 'none';
+        answerInput.placeholder = '例：nginx';
+    } else if (type === 'true_false') {
+        optionsRow.style.display = 'none';
+        answerInput.placeholder = '正确 或 错误';
+    } else {
+        optionsRow.style.display = '';
+        answerInput.placeholder = 'A / B / C / D';
+    }
+}
+
+// ── Exam question CRUD ──
+function optionsTextToJson(text) {
+    const lines = text.split('\n').filter(l => l.trim());
+    return JSON.stringify(lines.map(l => l.trim()));
+}
+
+function jsonToOptionsText(json) {
+    try {
+        return JSON.parse(json).join('\n');
+    } catch(e) {
+        return '';
+    }
+}
+
+async function saveQuestion(event, chalId) {
+    event.preventDefault();
+    const form = document.getElementById('questionForm' + chalId);
+    const formData = new FormData(form);
+    const editId = document.getElementById('editId' + chalId).value;
+
+    // Convert options text to JSON
+    const optionsText = formData.get('options_text') || '';
+    const qType = formData.get('question_type');
+    let options = '[]';
+    if (qType === 'single_choice' && optionsText.trim()) {
+        options = optionsTextToJson(optionsText);
+    } else if (qType === 'true_false') {
+        options = '["正确", "错误"]';
+    }
+
+    const body = new URLSearchParams();
+    body.append('question_type', qType);
+    body.append('question_text', formData.get('question_text'));
+    body.append('options', options);
+    body.append('answer', formData.get('answer'));
+    body.append('points', formData.get('points'));
+    body.append('order', formData.get('order'));
+
+    let url, method;
+    if (editId) {
+        url = '/admin/exam-questions/' + editId + '/edit';
+        method = 'POST';
+    } else {
+        url = '/admin/challenges/' + chalId + '/exam-questions';
+        method = 'POST';
+    }
+
+    try {
+        const resp = await fetch(url, { method, headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body });
+        const data = await resp.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('保存失败：' + (data.error || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败：' + e.message);
+    }
+}
+
+async function editQuestion(qId, chalId) {
+    // Find the question row and extract data
+    const row = document.getElementById('qRow' + qId);
+    if (!row) return;
+    // Fetch question data from the rendered info and populate the form
+    // Since we have data in the DOM, parse it
+    const badges = row.querySelectorAll('.badge');
+    let qType = 'single_choice';
+    if (badges.length > 0) {
+        const typeText = badges[0].textContent.trim();
+        if (typeText === '单选') qType = 'single_choice';
+        else if (typeText === '判断') qType = 'true_false';
+        else if (typeText === '填空') qType = 'fill_blank';
+    }
+
+    // Use JSON from server - reload just the question data
+    // Simpler approach: fetch all questions via a quick API call
+    // For now, use the DOM data
+    const textEl = row.querySelector('strong');
+    const questionText = textEl ? textEl.textContent.replace(/^#\d+\s*/, '') : '';
+    const answerMatch = row.innerHTML.match(/答案：([^<]+)/);
+    const answer = answerMatch ? answerMatch[1].trim() : '';
+    const optionsMatch = row.innerHTML.match(/选项：([^<]+)/);
+    const optionsStr = optionsMatch ? optionsMatch[1].trim() : '[]';
+    const pointsMatch = row.textContent.match(/(\d+)分/);
+    const points = pointsMatch ? pointsMatch[1] : '10';
+    const orderMatch = row.querySelector('strong') ? row.querySelector('strong').textContent.match(/#(\d+)/) : null;
+    const order = orderMatch ? orderMatch[1] : '0';
+
+    const form = document.getElementById('questionForm' + chalId);
+    document.getElementById('editId' + chalId).value = qId;
+    document.getElementById('qType' + chalId).value = qType;
+    form.querySelector('[name="question_text"]').value = questionText;
+    form.querySelector('[name="answer"]').value = answer;
+    form.querySelector('[name="points"]').value = points;
+    form.querySelector('[name="order"]').value = order;
+    form.querySelector('[name="options_text"]').value = jsonToOptionsText(optionsStr);
+    document.getElementById('answer' + chalId).value = answer;
+
+    onQTypeChange(chalId);
+    document.getElementById('formTitle' + chalId).textContent = '编辑试题';
+    document.getElementById('submitQBtn' + chalId).innerHTML = '<i class="bi bi-check-lg"></i> 保存修改';
+    document.getElementById('cancelEditBtn' + chalId).style.display = '';
+}
+
+function cancelEdit(chalId) {
+    document.getElementById('editId' + chalId).value = '';
+    document.getElementById('questionForm' + chalId).reset();
+    document.getElementById('formTitle' + chalId).textContent = '添加试题';
+    document.getElementById('submitQBtn' + chalId).innerHTML = '<i class="bi bi-plus-lg"></i> 添加试题';
+    document.getElementById('cancelEditBtn' + chalId).style.display = 'none';
+    document.getElementById('optionsRow' + chalId).style.display = '';
+}
+
+async function deleteQuestion(qId, chalId) {
+    if (!confirm('确定删除此试题？')) return;
+    try {
+        const resp = await fetch('/admin/exam-questions/' + qId + '/delete', {
+            method: 'POST',
+        });
+        const data = await resp.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('删除失败：' + (data.error || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败：' + e.message);
     }
 }
 

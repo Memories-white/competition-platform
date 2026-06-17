@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ challenge.title }} - 试卷考试{% endblock %}
+
+{% block content %}
+<div class="breadcrumb-bar">
+    <a href="{{ url_for('contestant.dashboard') }}">我的环境</a>
+    <span>/</span>
+    <span>{{ challenge.title }}</span>
+</div>
+
+<div class="page-header">
+    <h4><i class="bi bi-journal-text text-warning"></i> {{ challenge.title }}</h4>
+    <span class="badge bg-info fs-6">{{ challenge.points }} 分</span>
+</div>
+
+{% if challenge.description %}
+<div class="alert alert-light border mb-4">
+    <i class="bi bi-info-circle me-2"></i>{{ challenge.description }}
+</div>
+{% endif %}
+
+{% if existing_score %}
+<div class="alert alert-{{ 'success' if existing_score.passed else 'warning' }} mb-4">
+    <i class="bi bi-{{ 'check-circle-fill' if existing_score.passed else 'exclamation-circle-fill' }}"></i>
+    <strong>已提交成绩：{{ existing_score.score }} / {{ challenge.points }} 分</strong>
+    <span class="text-muted ms-2">（{{ existing_score.judged_at.strftime('%Y-%m-%d %H:%M:%S') if existing_score.judged_at else '' }}）</span>
+</div>
+{% endif %}
+
+<form id="examForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    {% for q in questions %}
+    <div class="card mb-3" id="q-{{ q.id }}">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h6 class="mb-0">
+                    <span class="badge bg-primary me-2">{{ loop.index }}</span>
+                    {{ q.question_text }}
+                </h6>
+                <span class="badge bg-secondary">{{ q.points }} 分</span>
+            </div>
+
+            {% if q.question_type == 'single_choice' %}
+            <div class="ms-4">
+                {% for opt in q.options_list %}
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="q_{{ q.id }}" value="{{ opt[:1] }}" id="q{{ q.id }}_{{ loop.index }}">
+                    <label class="form-check-label" for="q{{ q.id }}_{{ loop.index }}">{{ opt }}</label>
+                </div>
+                {% endfor %}
+            </div>
+            {% elif q.question_type == 'true_false' %}
+            <div class="ms-4">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="q_{{ q.id }}" value="正确" id="q{{ q.id }}_true">
+                    <label class="form-check-label" for="q{{ q.id }}_true"><i class="bi bi-check-lg text-success"></i> 正确</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="q_{{ q.id }}" value="错误" id="q{{ q.id }}_false">
+                    <label class="form-check-label" for="q{{ q.id }}_false"><i class="bi bi-x-lg text-danger"></i> 错误</label>
+                </div>
+            </div>
+            {% elif q.question_type == 'fill_blank' %}
+            <div class="ms-4">
+                <input type="text" class="form-control" name="q_{{ q.id }}" placeholder="请输入答案" style="max-width:400px;">
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if questions %}
+    <div class="d-flex gap-2 mb-5">
+        <button type="button" class="btn btn-warning btn-lg" id="submitExamBtn" onclick="submitExam({{ challenge.id }})">
+            <i class="bi bi-send"></i> 提交答案
+        </button>
+        <a href="{{ url_for('contestant.dashboard') }}" class="btn btn-outline-secondary btn-lg">返回</a>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon"><i class="bi bi-journal-x"></i></div>
+        <p>该试卷暂无试题，请等待老师添加</p>
+    </div>
+    {% endif %}
+</form>
+
+<div id="examResult" style="display:none;"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function submitExam(challengeId) {
+    const btn = document.getElementById('submitExamBtn');
+    const resultDiv = document.getElementById('examResult');
+    const form = document.getElementById('examForm');
+
+    // Check if at least one question answered
+    const answered = form.querySelectorAll('input[type="radio"]:checked, input[type="text"][value]').length;
+    if (answered === 0) {
+        alert('请至少回答一道题');
+        return;
+    }
+
+    if (!confirm('确定提交答案？提交后可以重新作答。')) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 判分中...';
+
+    try {
+        const formData = new FormData(form);
+        const resp = await fetch(`/contestant/exam/${challengeId}/submit`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await resp.json();
+
+        resultDiv.style.display = 'block';
+        if (data.success) {
+            let html = `<div class="alert alert-${data.passed ? 'success' : 'warning'} mb-3">`;
+            html += `<h5><i class="bi bi-${data.passed ? 'check-circle-fill' : 'exclamation-circle-fill'}"></i> `;
+            html += `得分：${data.score} / ${data.total_points} 分`;
+            html += data.passed ? ' <span class="badge bg-success">通过</span>' : ' <span class="badge bg-warning">未通过（需60%）</span>';
+            html += `</h5></div>`;
+
+            if (data.details) {
+                html += '<h6 class="mb-3">答题详情：</h6>';
+                data.details.forEach((d, i) => {
+                    const icon = d.is_correct ? '<i class="bi bi-check-lg text-success"></i>' : '<i class="bi bi-x-lg text-danger"></i>';
+                    html += `<div class="card mb-2 ${d.is_correct ? 'border-success' : 'border-danger'}">`;
+                    html += `<div class="card-body py-2">`;
+                    html += `<div class="d-flex justify-content-between">`;
+                    html += `<span>${icon} <strong>${i + 1}.</strong> ${d.question_text}</span>`;
+                    html += `<span class="badge bg-${d.is_correct ? 'success' : 'danger'}">${d.points} / ${d.max_points} 分</span>`;
+                    html += `</div>`;
+                    if (!d.is_correct) {
+                        html += `<div class="small text-muted mt-1">你的答案：<span class="text-danger">${d.user_answer || '未作答'}</span> → 正确答案：<span class="text-success">${d.correct_answer}</span></div>`;
+                    }
+                    html += `</div></div>`;
+                });
+            }
+            resultDiv.innerHTML = html;
+            window.scrollTo({ top: resultDiv.offsetTop - 20, behavior: 'smooth' });
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${data.error || '提交失败'}</div>`;
+        }
+    } catch (e) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `<div class="alert alert-danger">请求失败：${e.message}</div>`;
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-send"></i> 重新提交';
+}
+</script>
+{% endblock %}

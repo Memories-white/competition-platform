@@ -84,10 +84,43 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        _migrate_database(app)
         _seed_admin(app)
         _start_scheduler(app)
 
     return app
+
+
+def _migrate_database(app):
+    """Add missing columns/tables for existing databases (SQLite-safe)."""
+    from sqlalchemy import text, inspect
+
+    with app.app_context():
+        conn = db.engine.connect()
+        inspector = inspect(db.engine)
+
+        # challenges.challenge_type
+        cols = [c["name"] for c in inspector.get_columns("challenges")]
+        if "challenge_type" not in cols:
+            conn.execute(text("ALTER TABLE challenges ADD COLUMN challenge_type VARCHAR(20) DEFAULT 'docker'"))
+            conn.commit()
+            logger.info("Migration: added challenges.challenge_type")
+
+        # scores.answers
+        score_cols = [c["name"] for c in inspector.get_columns("scores")]
+        if "answers" not in score_cols:
+            conn.execute(text("ALTER TABLE scores ADD COLUMN answers TEXT DEFAULT ''"))
+            conn.commit()
+            logger.info("Migration: added scores.answers")
+
+        # exam_questions table
+        if "exam_questions" not in inspector.get_table_names():
+            from models.models import ExamQuestion
+            ExamQuestion.__table__.create(db.engine, checkfirst=True)
+            conn.commit()
+            logger.info("Migration: created exam_questions table")
+
+        conn.close()
 
 
 def _seed_admin(app):
@@ -111,7 +144,8 @@ def _start_scheduler(app):
     if scheduler.running:
         return
     from services.judge_service import judge_all_for_competition
-    from models.models import Competition
+    from services.environment_service import stop_all_environments, remove_all_environments
+    from models.models import Competition, Environment
 
     def auto_judge_job():
         with app.app_context():
@@ -123,6 +157,37 @@ def _start_scheduler(app):
                 except Exception as e:
                     logger.error(f"Auto-judge error [{comp.name}]: {e}")
 
+    def auto_cleanup_job():
+        """Auto-judge and clean up environments for finished competitions."""
+        with app.app_context():
+            finished_comps = Competition.query.filter_by(status="finished").all()
+            for comp in finished_comps:
+                # Check if there are any non-removed environments
+                active_envs = Environment.query.filter_by(competition_id=comp.id).filter(
+                    ~Environment.status.in_(["removed"])
+                ).count()
+                if active_envs == 0:
+                    continue
+
+                logger.info(f"Auto-cleanup [{comp.name}]: judging remaining environments...")
+                try:
+                    judge_result = judge_all_for_competition(comp.id)
+                    logger.info(f"Auto-cleanup [{comp.name}]: judged={judge_result['judged']}, passed={judge_result['passed']}")
+                except Exception as e:
+                    logger.error(f"Auto-cleanup judge error [{comp.name}]: {e}")
+
+                try:
+                    stop_result = stop_all_environments(comp.id)
+                    logger.info(f"Auto-cleanup [{comp.name}]: stopped {stop_result['stopped']} containers")
+                except Exception as e:
+                    logger.error(f"Auto-cleanup stop error [{comp.name}]: {e}")
+
+                try:
+                    remove_result = remove_all_environments(comp.id)
+                    logger.info(f"Auto-cleanup [{comp.name}]: removed {remove_result['removed']} containers")
+                except Exception as e:
+                    logger.error(f"Auto-cleanup remove error [{comp.name}]: {e}")
+
     scheduler.add_job(
         auto_judge_job,
         "interval",
@@ -130,8 +195,16 @@ def _start_scheduler(app):
         id="auto_judge",
         replace_existing=True,
     )
+    scheduler.add_job(
+        auto_cleanup_job,
+        "interval",
+        seconds=app.config.get("CLEANUP_INTERVAL_SECONDS", 120),
+        id="auto_cleanup",
+        replace_existing=True,
+    )
     scheduler.start()
     logger.info(f"Auto-judge scheduler started (interval: {app.config.get('JUDGE_INTERVAL_SECONDS', 30)}s)")
+    logger.info(f"Auto-cleanup scheduler started (interval: {app.config.get('CLEANUP_INTERVAL_SECONDS', 120)}s)")
 
 
 if __name__ == "__main__":

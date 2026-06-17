@@ -23,7 +23,7 @@
         </div>
     </div>
     <div class="card-body">
-        {% if comp_data.environments %}
+        {% if comp_data.environments or comp_data.exam_challenges %}
         <div class="row g-3">
             {% for env in comp_data.environments %}
             <div class="col-md-4">
@@ -42,6 +42,31 @@
                         </div>
                         <a href="{{ url_for('contestant.environment_detail', env_id=env.id) }}" class="btn btn-primary btn-sm w-100 mt-auto">
                             <i class="bi bi-terminal"></i> 进入环境
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% for exam_chal in comp_data.exam_challenges %}
+            <div class="col-md-4">
+                <div class="card border h-100" style="border-left: 3px solid var(--c-accent);">
+                    <div class="card-body d-flex flex-column">
+                        <h6 class="card-title mb-2"><i class="bi bi-journal-text text-warning me-1"></i>{{ exam_chal.title }}</h6>
+                        <div class="mb-2">
+                            <span class="badge bg-warning">试卷考试</span>
+                            <span class="badge bg-info ms-1">{{ exam_chal.points }}分</span>
+                        </div>
+                        <p class="small text-muted mb-3">{{ exam_chal.description or '请点击进入考试作答' }}</p>
+                        {% set exam_score = comp_data.exam_scores.get(exam_chal.id) %}
+                        {% if exam_score %}
+                        <div class="alert alert-{{ 'success' if exam_score.passed else 'warning' }} small py-2 mb-2">
+                            <i class="bi bi-{{ 'check-circle' if exam_score.passed else 'x-circle' }}"></i>
+                            得分：{{ exam_score.score }} / {{ exam_chal.points }}
+                        </div>
+                        {% endif %}
+                        <a href="{{ url_for('contestant.exam_page', challenge_id=exam_chal.id) }}" class="btn btn-warning btn-sm w-100 mt-auto">
+                            <i class="bi bi-pencil-square"></i>
+                            {% if exam_score %}重新考试{% else %}进入考试{% endif %}
                         </a>
                     </div>
                 </div>

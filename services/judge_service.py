@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from models import db
-from models.models import Challenge, Environment, Score, Competition
+from models.models import Challenge, Environment, Score, Competition, ExamQuestion
 from docker_engine.manager import (
     check_port_in_container,
     check_file_in_container,
@@ -70,12 +70,16 @@ def judge_environment(env: Environment) -> dict:
 
 
 def judge_all_for_competition(competition_id: int) -> dict:
-    """Judge all environments for a competition. Called by scheduler."""
+    """Judge all environments for a competition. Called by scheduler.
+    Only judges Docker-type challenges; exam challenges are scored on submission."""
     envs = Environment.query.filter_by(competition_id=competition_id).all()
     results = {"judged": 0, "passed": 0, "details": []}
 
     for env in envs:
         if not env.container_id:
+            continue
+        # Skip exam challenges (no container to judge)
+        if env.challenge and env.challenge.challenge_type == "exam":
             continue
         result = judge_environment(env)
         results["judged"] += 1
@@ -120,6 +124,72 @@ def get_user_scores(user_id: int, competition_id: int = None) -> list:
         data["competition_name"] = Competition.query.get(s.competition_id).name if s.competition_id else ""
         scores.append(data)
     return scores
+
+
+def judge_exam(challenge_id: int, user_id: int, answers: dict) -> dict:
+    """Judge exam answers and save score."""
+    challenge = db.session.get(Challenge, challenge_id)
+    if not challenge or challenge.challenge_type != "exam":
+        return {"success": False, "error": "无效的试卷题目"}
+
+    questions = ExamQuestion.query.filter_by(challenge_id=challenge_id).order_by(ExamQuestion.order).all()
+    if not questions:
+        return {"success": False, "error": "试卷没有试题"}
+
+    total_points = 0
+    earned_points = 0
+    details = []
+
+    for q in questions:
+        user_answer = answers.get(str(q.id), "").strip()
+        correct_answer = q.answer.strip()
+        is_correct = user_answer.lower() == correct_answer.lower() if q.question_type == "fill_blank" else user_answer == correct_answer
+        total_points += q.points
+        if is_correct:
+            earned_points += q.points
+        details.append({
+            "question_id": q.id,
+            "question_text": q.question_text,
+            "user_answer": user_answer,
+            "correct_answer": correct_answer,
+            "is_correct": is_correct,
+            "points": q.points if is_correct else 0,
+            "max_points": q.points,
+        })
+
+    passed = earned_points >= total_points * 0.6 if total_points > 0 else False
+
+    existing = Score.query.filter_by(
+        competition_id=challenge.competition_id,
+        user_id=user_id,
+        challenge_id=challenge_id,
+    ).first()
+
+    if existing:
+        existing.score = earned_points
+        existing.passed = passed
+        existing.judged_at = datetime.now(timezone.utc)
+        existing.answers = json.dumps(answers, ensure_ascii=False)
+    else:
+        score = Score(
+            competition_id=challenge.competition_id,
+            user_id=user_id,
+            challenge_id=challenge_id,
+            score=earned_points,
+            passed=passed,
+            judged_at=datetime.now(timezone.utc),
+            answers=json.dumps(answers, ensure_ascii=False),
+        )
+        db.session.add(score)
+
+    db.session.commit()
+    return {
+        "success": True,
+        "passed": passed,
+        "score": earned_points,
+        "total_points": total_points,
+        "details": details,
+    }
 
 
 def get_scoreboard(competition_id: int) -> list:

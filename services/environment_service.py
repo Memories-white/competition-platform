@@ -25,22 +25,26 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
     from models.models import User
     contestants = User.query.filter_by(role="contestant").all()
     challenges = Challenge.query.filter_by(competition_id=competition_id).all()
+    # Filter out exam-type challenges (no Docker deployment needed)
+    docker_challenges = [c for c in challenges if c.challenge_type != "exam"]
 
     if not contestants:
         emit("[错误] 没有选手可分配，请先注册选手账号")
         emit_done(0, 0)
         return {"success": False, "error": "没有选手可分配"}
-    if not challenges:
-        emit("[错误] 没有题目可部署，请先添加题目并构建镜像")
+    if not docker_challenges:
+        emit("[提示] 没有 Docker 实操题目可部署（试卷题目无需部署）")
+        emit_done(0, 0)
+        return {"success": False, "error": "没有 Docker 题目可部署"}
         emit_done(0, 0)
         return {"success": False, "error": "没有题目可部署"}
 
-    total = len(contestants) * len(challenges)
+    total = len(contestants) * len(docker_challenges)
     current = 0
     results = {"success": 0, "failed": 0, "details": []}
 
     for user in contestants:
-        for challenge in challenges:
+        for challenge in docker_challenges:
             current += 1
             progress_pct = int(current / total * 100)
 

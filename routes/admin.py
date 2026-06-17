@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from functools import wraps
 from models import db
-from models.models import Competition, Challenge, Environment, Score, User
+from models.models import Competition, Challenge, Environment, Score, User, ExamQuestion
 from docker_engine.builder import build_image, build_image_from_template, get_image_info, get_available_templates
 from docker_engine.manager import get_container_status, start_container, stop_container, remove_container
 from services.environment_service import (
@@ -145,6 +145,10 @@ def competition_detail(comp_id):
         return redirect(url_for("admin.competitions"))
 
     challenges_list = Challenge.query.filter_by(competition_id=comp_id).order_by(Challenge.order).all()
+    exam_questions_map = {}
+    for chal in challenges_list:
+        if chal.challenge_type == "exam":
+            exam_questions_map[chal.id] = ExamQuestion.query.filter_by(challenge_id=chal.id).order_by(ExamQuestion.order).all()
     templates = get_available_templates()
     envs = get_competition_environments(comp_id)
 
@@ -164,7 +168,8 @@ def competition_detail(comp_id):
     return render_template("admin/competition_detail.html",
                            competition=comp, challenges=challenges_list,
                            templates=templates, environments=envs,
-                           rankings=rankings, score_lookup=score_lookup)
+                           rankings=rankings, score_lookup=score_lookup,
+                           exam_questions_map=exam_questions_map)
 
 
 @admin_bp.route("/competitions/<int:comp_id>/challenges")
@@ -183,6 +188,7 @@ def create_challenge(comp_id):
 
     title = request.form.get("title", "").strip()
     description = request.form.get("description", "").strip()
+    challenge_type = request.form.get("challenge_type", "docker").strip()
     dockerfile_content = request.form.get("dockerfile_content", "").strip()
     template_name = request.form.get("template_name", "").strip()
     judge_type = request.form.get("judge_type", "port")
@@ -198,6 +204,7 @@ def create_challenge(comp_id):
         competition_id=comp_id,
         title=title,
         description=description,
+        challenge_type=challenge_type,
         dockerfile_content=dockerfile_content,
         judge_type=judge_type,
         judge_config=judge_config,
@@ -207,23 +214,24 @@ def create_challenge(comp_id):
     db.session.add(challenge)
     db.session.flush()
 
-    if template_name and not dockerfile_content:
-        success, msg = build_image_from_template(template_name, challenge.id)
-        if success:
-            challenge.image_tag = msg
-            import os
-            from config import Config
-            tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
-            with open(tpl_path) as f:
-                challenge.dockerfile_content = f.read()
-        else:
-            flash(f"镜像构建失败: {msg}", "error")
-    elif dockerfile_content:
-        success, msg = build_image(challenge.id, dockerfile_content)
-        if success:
-            challenge.image_tag = msg
-        else:
-            flash(f"镜像构建失败: {msg}", "error")
+    if challenge_type == "docker":
+        if template_name and not dockerfile_content:
+            success, msg = build_image_from_template(template_name, challenge.id)
+            if success:
+                challenge.image_tag = msg
+                import os
+                from config import Config
+                tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
+                with open(tpl_path) as f:
+                    challenge.dockerfile_content = f.read()
+            else:
+                flash(f"镜像构建失败: {msg}", "error")
+        elif dockerfile_content:
+            success, msg = build_image(challenge.id, dockerfile_content)
+            if success:
+                challenge.image_tag = msg
+            else:
+                flash(f"镜像构建失败: {msg}", "error")
 
     db.session.commit()
     flash(f"题目「{title}」创建成功", "success")
@@ -240,19 +248,21 @@ def edit_challenge(challenge_id):
 
     challenge.title = request.form.get("title", challenge.title).strip()
     challenge.description = request.form.get("description", challenge.description).strip()
+    challenge.challenge_type = request.form.get("challenge_type", challenge.challenge_type)
     challenge.judge_type = request.form.get("judge_type", challenge.judge_type)
     challenge.judge_config = request.form.get("judge_config", challenge.judge_config)
     challenge.points = int(request.form.get("points", challenge.points))
     challenge.order = int(request.form.get("order", challenge.order))
 
-    new_dockerfile = request.form.get("dockerfile_content", "").strip()
-    if new_dockerfile and new_dockerfile != challenge.dockerfile_content:
-        challenge.dockerfile_content = new_dockerfile
-        success, msg = build_image(challenge.id, new_dockerfile)
-        if success:
-            challenge.image_tag = msg
-        else:
-            flash(f"镜像构建失败: {msg}", "error")
+    if challenge.challenge_type == "docker":
+        new_dockerfile = request.form.get("dockerfile_content", "").strip()
+        if new_dockerfile and new_dockerfile != challenge.dockerfile_content:
+            challenge.dockerfile_content = new_dockerfile
+            success, msg = build_image(challenge.id, new_dockerfile)
+            if success:
+                challenge.image_tag = msg
+            else:
+                flash(f"镜像构建失败: {msg}", "error")
 
     db.session.commit()
     flash("题目更新成功", "success")
@@ -397,6 +407,69 @@ def scores(comp_id):
     return render_template("admin/scores.html", competition=comp,
                            rankings=rankings, score_lookup=score_lookup,
                            challenges=challenges_list)
+
+
+# ── Exam Question Management ──
+
+@admin_bp.route("/challenges/<int:challenge_id>/exam-questions", methods=["POST"])
+@admin_required
+def add_exam_question(challenge_id):
+    challenge = db.session.get(Challenge, challenge_id)
+    if not challenge or challenge.challenge_type != "exam":
+        return jsonify({"success": False, "error": "无效的试卷题目"}), 400
+
+    question_type = request.form.get("question_type", "single_choice")
+    question_text = request.form.get("question_text", "").strip()
+    options = request.form.get("options", "[]").strip()
+    answer = request.form.get("answer", "").strip()
+    points = int(request.form.get("points", 0))
+    order = int(request.form.get("order", 0))
+
+    if not question_text or not answer:
+        return jsonify({"success": False, "error": "题目内容和答案不能为空"}), 400
+
+    q = ExamQuestion(
+        challenge_id=challenge_id,
+        question_type=question_type,
+        question_text=question_text,
+        options=options,
+        answer=answer,
+        points=points,
+        order=order,
+    )
+    db.session.add(q)
+    db.session.commit()
+    return jsonify({"success": True, "question": q.to_dict()})
+
+
+@admin_bp.route("/exam-questions/<int:question_id>/edit", methods=["POST"])
+@admin_required
+def edit_exam_question(question_id):
+    q = db.session.get(ExamQuestion, question_id)
+    if not q:
+        return jsonify({"success": False, "error": "试题不存在"}), 404
+
+    q.question_type = request.form.get("question_type", q.question_type)
+    q.question_text = request.form.get("question_text", q.question_text).strip()
+    q.options = request.form.get("options", q.options).strip()
+    q.answer = request.form.get("answer", q.answer).strip()
+    q.points = int(request.form.get("points", q.points))
+    q.order = int(request.form.get("order", q.order))
+    db.session.commit()
+    return jsonify({"success": True, "question": q.to_dict()})
+
+
+@admin_bp.route("/exam-questions/<int:question_id>/delete", methods=["POST"])
+@admin_required
+def delete_exam_question(question_id):
+    q = db.session.get(ExamQuestion, question_id)
+    if not q:
+        return jsonify({"success": False, "error": "试题不存在"}), 404
+
+    challenge_id = q.challenge_id
+    db.session.delete(q)
+    db.session.commit()
+    return jsonify({"success": True, "challenge_id": challenge_id})
 
 
 # ── User Management ──
