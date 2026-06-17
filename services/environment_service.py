@@ -84,7 +84,7 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
                 expose_ports = [80]
 
             if not challenge.image_tag:
-                logger.warning(f"部署跳过：题目「{challenge.title}」镜像未构建 | Deploy skip: no image_tag for '{challenge.title}'")
+                logger.debug(f"部署跳过：题目「{challenge.title}」镜像未构建 | Deploy skip: no image_tag for '{challenge.title}'")
                 results["details"].append({
                     "user": user.username,
                     "challenge": challenge.title,

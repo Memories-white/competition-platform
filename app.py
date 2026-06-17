@@ -109,6 +109,81 @@ def create_app():
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(contestant_bp, url_prefix="/contestant")
 
+    # ── 首次安装引导 ──
+    def _setup_done():
+        return os.path.exists(app.config.get("SETUP_DONE_FILE", ""))
+
+    @app.before_request
+    def _check_setup():
+        if request.endpoint is None or request.endpoint in ("setup", "setup_api", "static"):
+            return
+        if not _setup_done():
+            return redirect(url_for("setup"))
+
+    @app.route("/setup")
+    def setup():
+        if _setup_done():
+            return redirect(url_for("index"))
+        return render_template("setup.html")
+
+    @app.route("/setup/api/<action>")
+    def setup_api(action):
+        import json as _json
+        if action == "check":
+            ok = True
+            msgs = []
+            # Check Python
+            msgs.append({"step": "Python 运行环境", "ok": True, "msg": "Python 3.x"})
+            # Check Docker
+            try:
+                import docker; d = docker.from_env(timeout=3); d.ping()
+                msgs.append({"step": "Docker 服务", "ok": True, "msg": "已连接"})
+            except Exception as e:
+                ok = False
+                msgs.append({"step": "Docker 服务", "ok": False, "msg": str(e)[:100]})
+            # Check DB
+            try:
+                from models import db; from sqlalchemy import text; db.session.execute(text("SELECT 1"))
+                msgs.append({"step": "SQLite 数据库", "ok": True, "msg": "正常"})
+            except Exception as e:
+                ok = False
+                msgs.append({"step": "SQLite 数据库", "ok": False, "msg": str(e)[:100]})
+            return _json.dumps({"all_ok": ok, "checks": msgs}, ensure_ascii=False)
+
+        if action == "pull_base":
+            try:
+                import docker; d = docker.from_env(timeout=10)
+                d.images.pull("ubuntu:22.04")
+                return _json.dumps({"ok": True, "msg": "ubuntu:22.04 拉取成功"})
+            except Exception as e:
+                return _json.dumps({"ok": False, "msg": str(e)[:200]})
+
+        if action == "build_presets":
+            from docker_engine.builder import build_challenge_image
+            from data.presets import PRESETS
+            results = []
+            for p in PRESETS:
+                try:
+                    img_tag = f"preset-{p['title']}:latest"
+                    # 用预设ID作为challenge_id（负数避免冲突）
+                    r = build_challenge_image(-(p["id"] + 1), p["dockerfile_content"])
+                    results.append({"title": p["title"], "ok": r["success"], "tag": r.get("image_tag", ""), "error": r.get("error", "")[:100]})
+                except Exception as e:
+                    results.append({"title": p["title"], "ok": False, "tag": "", "error": str(e)[:100]})
+            all_ok = all(r["ok"] for r in results)
+            return _json.dumps({"ok": all_ok, "results": results}, ensure_ascii=False)
+
+        if action == "finish":
+            try:
+                os.makedirs(os.path.dirname(app.config["SETUP_DONE_FILE"]), exist_ok=True)
+                with open(app.config["SETUP_DONE_FILE"], "w") as f:
+                    f.write("done")
+                return _json.dumps({"ok": True})
+            except Exception as e:
+                return _json.dumps({"ok": False, "error": str(e)})
+
+        return _json.dumps({"ok": False, "error": "unknown action"})
+
     @app.route("/")
     def index():
         if "user_id" in session:
@@ -385,8 +460,11 @@ def _start_scheduler(app):
                             "error": result["error"],
                         })
                         # 不设 auto_deployed，等条件满足后重试
+                    elif fail > 0 and succ == 0:
+                        # 全部失败（如镜像未构建），静默跳过，等镜像就绪后 image_build_job 会自动触发部署
+                        pass
                     elif fail > 0:
-                        # 部分失败（如镜像未构建），标记未完成等下次重试
+                        # 部分失败，标记未完成等下次重试
                         logger.info(f"自动部署 [{comp.name}]：成功 {succ}，失败 {fail}（将重试） | Auto-build: success={succ}, failed={fail} (will retry)")
                         socketio.emit("auto_deploy_done", {
                             "competition": comp.name,
@@ -417,7 +495,7 @@ def _start_scheduler(app):
         """为未构建镜像的 Docker 题目后台构建镜像，通过 SocketIO 推送通知。
         每次只构建一个题目。Docker SDK 自带 timeout 保护，无需额外线程包装。"""
         with app.app_context():
-            from models.models import Challenge
+            from models.models import Challenge, Competition
             from docker_engine.builder import build_challenge_image
             # 只取第一个未构建的题目，每次调度只构建一个
             challenge = Challenge.query.filter_by(challenge_type="docker").filter(
@@ -439,6 +517,17 @@ def _start_scheduler(app):
                         "image_tag": result["image_tag"],
                         "error": "",
                     })
+                    # 若所属竞赛已激活，立即触发部署（不再等 15s 周期）
+                    comp = db.session.get(Competition, challenge.competition_id)
+                    if comp and comp.status == "active":
+                        logger.info(f"镜像就绪，立即部署 [{comp.name}] | Image ready, triggering deploy")
+                        from services.environment_service import deploy_competition_environments
+                        # 检查是否所有题目镜像都已就绪
+                        pending = Challenge.query.filter_by(
+                            competition_id=comp.id, challenge_type="docker"
+                        ).filter(Challenge.image_tag == "").count()
+                        if pending == 0:
+                            deploy_competition_environments(comp.id, socketio=socketio)
                 else:
                     logger.error(f"镜像构建：题目 {challenge.id} 构建失败 - {result['error']} | Image build: failed - {result['error']}")
                     socketio.emit("image_build_done", {

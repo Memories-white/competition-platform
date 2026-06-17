@@ -48,3 +48,6 @@ class Config:
 
     # 后台镜像构建间隔（秒），未构建的题目镜像会在此间隔被逐个构建
     IMAGE_BUILD_INTERVAL_SECONDS = int(os.environ.get("IMAGE_BUILD_INTERVAL_SECONDS", "30"))
+
+    # 首次安装标记文件
+    SETUP_DONE_FILE = os.path.join(BASE_DIR, "instance", ".setup_done")
