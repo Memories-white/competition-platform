@@ -63,6 +63,11 @@
 [data-theme="dark"] .rank-gold { background: #422006 !important; }
 [data-theme="dark"] .rank-bronze { background: #1E293B !important; }
 [data-theme="dark"] .bg-light { background: #1E293B !important; }
+[data-theme="dark"] .table-hover tbody tr:hover > td,
+[data-theme="dark"] .table-hover tbody tr:hover > th {
+    --bs-table-accent-bg: #334155;
+    background-color: #334155;
+}
 
 /* ── Reset & Base ── */
 body {
