@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}云计算竞赛平台{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Fira+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
@@ -11,12 +14,12 @@
 </head>
 <body>
 {% if current_user %}
-<div class="sidebar d-flex flex-column">
+<div class="sidebar">
     <a href="/" class="brand"><i class="bi bi-cloud-fill"></i> 云计算竞赛平台</a>
 
     {% if current_user.role == 'admin' %}
-    <div class="mt-2"></div>
-    <a class="nav-link {{ 'active' if request.path.startswith('/admin/') and 'competition' in request.path and not 'logs' in request.path else '' }}"
+    <div class="nav-section mt-3">管理</div>
+    <a class="nav-link {{ 'active' if request.path.startswith('/admin/') and 'competition' in request.path and 'logs' not in request.path else '' }}"
        href="{{ url_for('admin.competitions') }}">
         <i class="bi bi-trophy"></i> 竞赛管理
     </a>
@@ -24,6 +27,7 @@
        href="{{ url_for('admin.users') }}">
         <i class="bi bi-people"></i> 用户管理
     </a>
+    <div class="nav-section">监控</div>
     <a class="nav-link {{ 'active' if request.path.startswith('/admin/logs') else '' }}"
        href="{{ url_for('admin.logs') }}">
         <i class="bi bi-journal-text"></i> 系统日志
@@ -33,6 +37,7 @@
         <i class="bi bi-speedometer2"></i> 仪表盘
     </a>
     {% else %}
+    <div class="nav-section mt-3">比赛</div>
     <a class="nav-link {{ 'active' if request.path == '/contestant/' else '' }}"
        href="{{ url_for('contestant.dashboard') }}">
         <i class="bi bi-pc-display"></i> 我的环境
@@ -43,14 +48,13 @@
     </a>
     {% endif %}
 
-    <div class="mt-auto"></div>
-    <div class="user-info">
+    <div class="user-info mt-auto">
         <i class="bi bi-person-circle"></i> {{ current_user.username }}
         <span class="ms-2 badge bg-secondary">{{ '管理员' if current_user.role=='admin' else current_user.team_name or '选手' }}</span>
     </div>
     <div class="logout-btn">
         <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary btn-sm w-100">
-            <i class="bi bi-box-arrow-right"></i> 退出登录
+            <i class="bi bi-box-arrow-right"></i> 退出
         </a>
     </div>
 </div>
