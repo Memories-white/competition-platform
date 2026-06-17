@@ -338,6 +338,8 @@ def _sync_orphan_containers(app):
 
     for c in containers:
         name = c.name
+        if not name:
+            continue
         match = pattern.match(name)
         if not match:
             continue
