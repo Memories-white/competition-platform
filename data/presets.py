@@ -2,6 +2,17 @@
 
 PRESETS = [
     {
+        "id": 0,
+        "title": "Nginx Web 服务搭建（测试）",
+        "description": "【测试用题目】快速验证系统构建、部署、判题全流程。在容器中安装并启动 Nginx Web 服务器，确保 80 端口可访问。适用于新人入门与平台功能自测。",
+        "category": "测试",
+        "difficulty": "基础",
+        "login_info": "SSH 用户名 root 密码 password / Web 访问 http://IP:端口",
+        "judge_type": "port",
+        "judge_config": '{"port": 80}',
+        "dockerfile_content": "FROM ubuntu:22.04\n\nRUN apt-get update && apt-get install -y \\\n    nginx openssh-server vim curl && \\\n    echo 'root:password' | chpasswd && \\\n    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config\n\nEXPOSE 22 80\n\nCMD service ssh start && nginx -g 'daemon off;'",
+    },
+    {
         "id": 1,
         "title": "keystone 安装",
         "description": "使用脚本安装 keystone 服务，在控制节点上完成 keystone 的安装与配置，包括创建数据库、配置连接、初始化 Fernet 密钥、同步数据库、配置 Apache WSGI 等操作。",
