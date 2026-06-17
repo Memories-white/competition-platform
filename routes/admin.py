@@ -189,32 +189,12 @@ def update_competition_status(comp_id):
     new_status = request.form.get("status", "")
     if new_status in ("draft", "active", "finished"):
         comp.status = new_status
+        if new_status == "active":
+            comp.auto_deployed = False  # Reset to let scheduler pick it up
         db.session.commit()
 
-        # Auto-deploy when competition becomes active
-        if new_status == "active" and not comp.auto_deployed:
-            import threading
-            from app import socketio, logger
-            from flask import current_app
-            app = current_app._get_current_object()
-
-            def _auto_deploy():
-                with app.app_context():
-                    try:
-                        c = db.session.get(Competition, comp_id)
-                        logger.info(f"Auto-deploy triggered by status change: {c.name}")
-                        deploy_competition_environments(comp_id, socketio=socketio)
-                        c.auto_deployed = True
-                        c.deployed_at = datetime.now()
-                        db.session.commit()
-                    except Exception as e:
-                        logger.error(f"Auto-deploy error on activation: {e}")
-
-            thread = threading.Thread(target=_auto_deploy)
-            thread.start()
-            flash(f"竞赛已开始，自动部署任务已启动", "success")
-        elif new_status == "active":
-            flash(f"竞赛状态已更新为: {new_status}", "success")
+        if new_status == "active":
+            flash("竞赛已开始，系统将在 15 秒内自动部署环境", "success")
         else:
             flash(f"竞赛状态已更新为: {new_status}", "success")
 
