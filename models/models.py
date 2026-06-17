@@ -38,6 +38,8 @@ class Competition(db.Model):
     status = db.Column(db.String(20), default="draft")  # draft | active | finished
     cpu_limit = db.Column(db.Float, default=0.5)
     mem_limit = db.Column(db.String(20), default="512m")
+    auto_deployed = db.Column(db.Boolean, default=False)  # whether auto-build has fired
+    deployed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     challenges = db.relationship("Challenge", backref="competition", lazy=True, cascade="all, delete-orphan")
@@ -53,6 +55,7 @@ class Competition(db.Model):
             "status": self.status,
             "cpu_limit": self.cpu_limit,
             "mem_limit": self.mem_limit,
+            "auto_deployed": self.auto_deployed,
         }
 
 

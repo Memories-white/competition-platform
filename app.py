@@ -113,6 +113,17 @@ def _migrate_database(app):
             conn.commit()
             logger.info("Migration: added scores.answers")
 
+        # competition.auto_deployed and deployed_at
+        comp_cols = [c["name"] for c in inspector.get_columns("competitions")]
+        if "auto_deployed" not in comp_cols:
+            conn.execute(text("ALTER TABLE competitions ADD COLUMN auto_deployed BOOLEAN DEFAULT 0"))
+            conn.commit()
+            logger.info("Migration: added competitions.auto_deployed")
+        if "deployed_at" not in comp_cols:
+            conn.execute(text("ALTER TABLE competitions ADD COLUMN deployed_at DATETIME"))
+            conn.commit()
+            logger.info("Migration: added competitions.deployed_at")
+
         # exam_questions table
         if "exam_questions" not in inspector.get_table_names():
             from models.models import ExamQuestion
@@ -144,7 +155,7 @@ def _start_scheduler(app):
     if scheduler.running:
         return
     from services.judge_service import judge_all_for_competition
-    from services.environment_service import stop_all_environments, remove_all_environments
+    from services.environment_service import stop_all_environments, remove_all_environments, deploy_competition_environments
     from models.models import Competition, Environment
 
     def auto_judge_job():
@@ -156,6 +167,22 @@ def _start_scheduler(app):
                     logger.info(f"Auto-judge [{comp.name}]: judged={result['judged']}, passed={result['passed']}")
                 except Exception as e:
                     logger.error(f"Auto-judge error [{comp.name}]: {e}")
+
+    def auto_build_job():
+        """Auto-deploy environments for active competitions that haven't been deployed yet."""
+        with app.app_context():
+            from datetime import datetime, timezone
+            active_comps = Competition.query.filter_by(status="active", auto_deployed=False).all()
+            for comp in active_comps:
+                try:
+                    logger.info(f"Auto-build [{comp.name}]: starting automatic deployment...")
+                    result = deploy_competition_environments(comp.id)
+                    comp.auto_deployed = True
+                    comp.deployed_at = datetime.now(timezone.utc)
+                    db.session.commit()
+                    logger.info(f"Auto-build [{comp.name}]: success={result.get('success', 0)}, failed={result.get('failed', 0)}")
+                except Exception as e:
+                    logger.error(f"Auto-build error [{comp.name}]: {e}")
 
     def auto_cleanup_job():
         """Auto-judge and clean up environments for finished competitions."""
@@ -189,6 +216,13 @@ def _start_scheduler(app):
                     logger.error(f"Auto-cleanup remove error [{comp.name}]: {e}")
 
     scheduler.add_job(
+        auto_build_job,
+        "interval",
+        seconds=app.config.get("AUTO_BUILD_INTERVAL_SECONDS", 15),
+        id="auto_build",
+        replace_existing=True,
+    )
+    scheduler.add_job(
         auto_judge_job,
         "interval",
         seconds=app.config.get("JUDGE_INTERVAL_SECONDS", 30),
@@ -203,6 +237,7 @@ def _start_scheduler(app):
         replace_existing=True,
     )
     scheduler.start()
+    logger.info(f"Auto-build scheduler started (interval: {app.config.get('AUTO_BUILD_INTERVAL_SECONDS', 15)}s)")
     logger.info(f"Auto-judge scheduler started (interval: {app.config.get('JUDGE_INTERVAL_SECONDS', 30)}s)")
     logger.info(f"Auto-cleanup scheduler started (interval: {app.config.get('CLEANUP_INTERVAL_SECONDS', 120)}s)")
 

@@ -1,13 +1,19 @@
 import json
+import time
+import logging
 from datetime import datetime, timezone
 from models import db
 from models.models import Environment, Challenge, Competition
 from docker_engine.manager import create_container, remove_container, get_container_status
 from docker_engine.builder import get_expose_port_from_dockerfile
 
+logger = logging.getLogger(__name__)
+
 
 def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
     """Deploy containers for all contestants for a competition. Emits progress via socketio."""
+    start_time = time.time()
+
     def emit(msg):
         if socketio:
             socketio.emit("deploy_progress", {"progress": 0, "total": 0, "current": 0, "message": msg})
@@ -36,8 +42,6 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
         emit("[提示] 没有 Docker 实操题目可部署（试卷题目无需部署）")
         emit_done(0, 0)
         return {"success": False, "error": "没有 Docker 题目可部署"}
-        emit_done(0, 0)
-        return {"success": False, "error": "没有题目可部署"}
 
     total = len(contestants) * len(docker_challenges)
     current = 0
@@ -143,11 +147,23 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
 
     db.session.commit()
 
+    elapsed = round(time.time() - start_time, 2)
+    results["elapsed_seconds"] = elapsed
+    results["total_envs"] = total
+
+    logger.info(
+        f"Deploy metrics [{competition.name}]: "
+        f"total={total} success={results['success']} failed={results['failed']} "
+        f"elapsed={elapsed}s "
+        f"avg_per_container={round(elapsed / total, 2) if total > 0 else 0}s"
+    )
+
     if socketio:
         socketio.emit("deploy_complete", {
             "success": results["success"],
             "failed": results["failed"],
             "total": total,
+            "elapsed": elapsed,
         })
 
     return results

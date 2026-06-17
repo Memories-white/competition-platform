@@ -1,10 +1,14 @@
 import os
 import io
+import time
 import logging
 import docker
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+BUILD_MAX_RETRIES = 2
+BUILD_RETRY_DELAY = 3  # seconds
 
 _client = None
 
@@ -41,54 +45,78 @@ def get_client():
     return _client
 
 
-def build_image(challenge_id: int, dockerfile_content: str) -> tuple:
+def build_image(challenge_id: int, dockerfile_content: str, max_retries: int = None) -> tuple:
     image_tag = f"comp-chal-{challenge_id}:latest"
-    try:
-        client = get_client()
-        client.images.build(
-            fileobj=io.BytesIO(dockerfile_content.encode()),
-            tag=image_tag,
-            rm=True,
-            forcerm=True,
-        )
-        return True, image_tag
-    except docker.errors.BuildError as e:
-        error_msg = ""
-        for line in e.build_log:
-            if "stream" in line:
-                error_msg += line["stream"]
-            elif "error" in line:
-                error_msg += line["error"]
-        return False, _format_error(error_msg or str(e))
-    except Exception as e:
-        return False, _format_error(str(e))
+    retries = max_retries if max_retries is not None else BUILD_MAX_RETRIES
+
+    last_error = ""
+    for attempt in range(retries + 1):
+        try:
+            client = get_client()
+            client.images.build(
+                fileobj=io.BytesIO(dockerfile_content.encode()),
+                tag=image_tag,
+                rm=True,
+                forcerm=True,
+            )
+            if attempt > 0:
+                logger.info(f"Build succeeded on retry {attempt} for challenge {challenge_id}")
+            return True, image_tag
+        except docker.errors.BuildError as e:
+            error_msg = ""
+            for line in e.build_log:
+                if "stream" in line:
+                    error_msg += line["stream"]
+                elif "error" in line:
+                    error_msg += line["error"]
+            last_error = _format_error(error_msg or str(e))
+        except Exception as e:
+            last_error = _format_error(str(e))
+
+        if attempt < retries:
+            logger.warning(f"Build attempt {attempt + 1} failed for challenge {challenge_id}, retrying in {BUILD_RETRY_DELAY}s: {last_error}")
+            time.sleep(BUILD_RETRY_DELAY)
+
+    return False, last_error
 
 
-def build_image_from_template(template_name: str, challenge_id: int) -> tuple:
+def build_image_from_template(template_name: str, challenge_id: int, max_retries: int = None) -> tuple:
     template_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name)
     if not os.path.isdir(template_path):
         return False, f"Template {template_name} not found"
 
     image_tag = f"comp-chal-{challenge_id}:latest"
-    try:
-        client = get_client()
-        client.images.build(
-            path=template_path,
-            tag=image_tag,
-            rm=True,
-            forcerm=True,
-        )
-        return True, image_tag
-    except docker.errors.BuildError as e:
-        error_msg = ""
-        for line in e.build_log:
-            if "stream" in line:
-                error_msg += line["stream"]
-            elif "error" in line:
-                error_msg += line["error"]
-        return False, _format_error(error_msg or str(e))
-    except Exception as e:
-        return False, _format_error(str(e))
+    retries = max_retries if max_retries is not None else BUILD_MAX_RETRIES
+
+    last_error = ""
+    for attempt in range(retries + 1):
+        try:
+            client = get_client()
+            client.images.build(
+                path=template_path,
+                tag=image_tag,
+                rm=True,
+                forcerm=True,
+            )
+            if attempt > 0:
+                logger.info(f"Template build succeeded on retry {attempt} for challenge {challenge_id}")
+            return True, image_tag
+        except docker.errors.BuildError as e:
+            error_msg = ""
+            for line in e.build_log:
+                if "stream" in line:
+                    error_msg += line["stream"]
+                elif "error" in line:
+                    error_msg += line["error"]
+            last_error = _format_error(error_msg or str(e))
+        except Exception as e:
+            last_error = _format_error(str(e))
+
+        if attempt < retries:
+            logger.warning(f"Template build attempt {attempt + 1} failed for {template_name}, retrying in {BUILD_RETRY_DELAY}s: {last_error}")
+            time.sleep(BUILD_RETRY_DELAY)
+
+    return False, last_error
 
 
 def get_image_info(tag: str) -> dict | None:

@@ -117,7 +117,34 @@ def update_competition_status(comp_id):
     if new_status in ("draft", "active", "finished"):
         comp.status = new_status
         db.session.commit()
-        flash(f"竞赛状态已更新为: {new_status}", "success")
+
+        # Auto-deploy when competition becomes active
+        if new_status == "active" and not comp.auto_deployed:
+            import threading
+            from app import socketio, logger
+            from flask import current_app
+            app = current_app._get_current_object()
+
+            def _auto_deploy():
+                with app.app_context():
+                    try:
+                        c = db.session.get(Competition, comp_id)
+                        logger.info(f"Auto-deploy triggered by status change: {c.name}")
+                        deploy_competition_environments(comp_id, socketio=socketio)
+                        c.auto_deployed = True
+                        c.deployed_at = datetime.now()
+                        db.session.commit()
+                    except Exception as e:
+                        logger.error(f"Auto-deploy error on activation: {e}")
+
+            thread = threading.Thread(target=_auto_deploy)
+            thread.start()
+            flash(f"竞赛已开始，自动部署任务已启动", "success")
+        elif new_status == "active":
+            flash(f"竞赛状态已更新为: {new_status}", "success")
+        else:
+            flash(f"竞赛状态已更新为: {new_status}", "success")
+
     return redirect(url_for("admin.competitions"))
 
 
@@ -541,6 +568,37 @@ def delete_user(user_id):
     db.session.commit()
     flash(f"用户「{user.username}」已删除", "success")
     return redirect(url_for("admin.users"))
+
+
+# ── Metrics ──
+
+@admin_bp.route("/metrics")
+@admin_required
+def deploy_metrics():
+    """Return deployment metrics for all competitions (for thesis data)."""
+    comps = Competition.query.order_by(Competition.created_at.desc()).all()
+    data = []
+    for comp in comps:
+        docker_chals = [c for c in comp.challenges if c.challenge_type != "exam"]
+        envs = Environment.query.filter_by(competition_id=comp.id).all()
+        scores = Score.query.filter_by(competition_id=comp.id, passed=True).all()
+
+        data.append({
+            "id": comp.id,
+            "name": comp.name,
+            "status": comp.status,
+            "challenge_count": len(docker_chals),
+            "exam_count": len(comp.challenges) - len(docker_chals),
+            "env_total": len(envs),
+            "env_running": sum(1 for e in envs if e.status == "running"),
+            "env_stopped": sum(1 for e in envs if e.status == "stopped"),
+            "auto_deployed": comp.auto_deployed,
+            "deployed_at": comp.deployed_at.isoformat() if comp.deployed_at else None,
+            "pass_rate": round(len(scores) / len(envs) * 100, 1) if envs else 0,
+            "total_score": sum(s.score for s in scores),
+        })
+
+    return jsonify({"metrics": data})
 
 
 # ── Logs ──
