@@ -63,6 +63,13 @@ def create_container(image_tag: str, container_name: str, cpu_limit: float = 0.5
     host_port = get_free_port()
     try:
         client = get_client()
+        # Remove leftover container with the same name before creating
+        try:
+            old = client.containers.get(container_name)
+            old.remove(force=True)
+            logger.info(f"Removed leftover container: {container_name}")
+        except docker.errors.NotFound:
+            pass
         container = client.containers.run(
             image=image_tag,
             name=container_name,
