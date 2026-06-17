@@ -73,6 +73,13 @@ def create_app():
             return redirect(url_for("contestant.dashboard"))
         return redirect(url_for("auth.login"))
 
+    @app.route("/presets")
+    def presets():
+        if "user_id" not in session:
+            return redirect(url_for("auth.login"))
+        from data.presets import PRESETS
+        return render_template("presets.html", presets=PRESETS)
+
     @app.context_processor
     def inject_user():
         from models.models import User

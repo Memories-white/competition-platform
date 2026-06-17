@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}CloudComp 云计算竞赛平台{% endblock %}</title>
+    <script>(function(){var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-bs-theme',t);})();</script>
+    <title>{% block title %}云计算竞赛系统{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Fira+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19,7 +20,7 @@
 <aside class="sidebar">
     <a href="/" class="sidebar-brand">
         <span class="icon"><i class="bi bi-cloud-fill"></i></span>
-        CloudComp
+        云计算竞赛系统
     </a>
 
     <nav class="sidebar-nav">
@@ -39,6 +40,12 @@
             <i class="bi bi-people"></i> 用户管理
         </a>
 
+        <div class="nav-label">资源</div>
+        <a class="nav-item {{ 'active' if request.path == '/presets' else '' }}"
+           href="/presets">
+            <i class="bi bi-journal-bookmark-fill"></i> 题库
+        </a>
+
         <div class="nav-label">系统</div>
         <a class="nav-item {{ 'active' if request.path.startswith('/admin/logs') else '' }}"
            href="{{ url_for('admin.logs') }}">
@@ -54,8 +61,18 @@
            href="{{ url_for('contestant.scoreboard') }}">
             <i class="bi bi-trophy"></i> 排行榜
         </a>
+        <a class="nav-item {{ 'active' if request.path == '/presets' else '' }}"
+           href="/presets">
+            <i class="bi bi-journal-bookmark-fill"></i> 题库
+        </a>
     {% endif %}
     </nav>
+
+    <div class="sidebar-theme-toggle">
+        <button onclick="toggleTheme()" class="btn-theme-toggle" title="切换深色/浅色模式">
+            <i id="themeIcon" class="bi bi-moon-fill"></i>
+        </button>
+    </div>
 
     <div class="sidebar-bottom">
         <div class="sidebar-user">
@@ -90,6 +107,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/socket.io@4.7.5/client-dist/socket.io.min.js"></script>
+<script>(function(){function i(t){var e=document.getElementById('themeIcon');if(e)e.className=t==='dark'?'bi bi-sun-fill':'bi bi-moon-fill';}document.addEventListener('DOMContentLoaded',function(){i(document.documentElement.getAttribute('data-theme'));});window.toggleTheme=function(){var c=document.documentElement.getAttribute('data-theme'),n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);document.documentElement.setAttribute('data-bs-theme',n);localStorage.setItem('theme',n);i(n);};})();</script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

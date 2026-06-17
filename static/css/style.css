@@ -21,7 +21,7 @@
     --c-info:         #3B82F6;
 
     --sidebar-w:      228px;
-    --sidebar-bg:     #111827;
+    --sidebar-bg:     rgba(17, 24, 39, 0.85);
     --sidebar-text:   #9CA3AF;
     --radius-sm:      8px;
     --radius:         12px;
@@ -32,7 +32,37 @@
     --shadow-lg:      0 10px 25px rgba(0,0,0,.08);
     --t-fast:         150ms ease;
     --t-normal:       200ms ease;
+    --t-theme:        300ms ease;
 }
+
+/* ── Dark Theme ── */
+[data-theme="dark"] {
+    --c-bg:           #0F172A;
+    --c-surface:      #1E293B;
+    --c-text:         #F1F5F9;
+    --c-text-soft:    #94A3B8;
+    --c-text-muted:   #64748B;
+    --c-border:       #334155;
+    --c-brand-bg:     #1E1B4B;
+    --shadow-sm:      0 1px 2px rgba(0,0,0,.2);
+    --shadow:         0 1px 3px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.2);
+    --shadow-md:      0 4px 6px rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.2);
+    --shadow-lg:      0 10px 25px rgba(0,0,0,.35);
+    --bs-table-hover-bg: #1E293B;
+}
+[data-theme="dark"] .table thead th { background: #1E293B; }
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select {
+    background: var(--c-surface); color: var(--c-text); border-color: var(--c-border);
+}
+[data-theme="dark"] .modal-header { background: var(--c-surface); }
+[data-theme="dark"] .text-muted { color: var(--c-text-muted) !important; }
+[data-theme="dark"] .code-tag { background: #334155; color: #E2E8F0; }
+[data-theme="dark"] .progress-indicator { background: #1E293B; }
+[data-theme="dark"] .rank-silver { background: #1E293B !important; }
+[data-theme="dark"] .rank-gold { background: #422006 !important; }
+[data-theme="dark"] .rank-bronze { background: #1E293B !important; }
+[data-theme="dark"] .bg-light { background: #1E293B !important; }
 
 /* ── Reset & Base ── */
 body {
@@ -41,6 +71,7 @@ body {
     color: var(--c-text);
     -webkit-font-smoothing: antialiased;
     line-height: 1.6;
+    transition: background var(--t-theme), color var(--t-theme);
 }
 
 /* ── Sidebar ── */
@@ -52,6 +83,8 @@ body {
     z-index: 1030;
     display: flex; flex-direction: column;
     overflow: hidden;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 .sidebar-brand {
     flex-shrink: 0;
@@ -175,7 +208,7 @@ body {
     border: 1px solid var(--c-border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
-    transition: box-shadow var(--t-normal);
+    transition: background var(--t-theme), border-color var(--t-theme), box-shadow var(--t-normal);
 }
 .card:hover { box-shadow: var(--shadow); }
 .card-header {
@@ -193,7 +226,7 @@ body {
     padding: 20px 24px;
     background: var(--c-surface);
     box-shadow: var(--shadow-sm);
-    transition: all var(--t-normal);
+    transition: background var(--t-theme), border-color var(--t-theme), box-shadow var(--t-normal), transform var(--t-normal);
 }
 .stat-card:hover {
     box-shadow: var(--shadow-md);
@@ -305,6 +338,8 @@ body {
 .modal-content {
     border-radius: var(--radius-lg); border: none;
     box-shadow: var(--shadow-lg);
+    background: var(--c-surface);
+    transition: background var(--t-theme);
 }
 .modal-header {
     background: var(--c-brand-bg);
@@ -346,6 +381,30 @@ body {
     box-shadow: var(--shadow-lg); padding: 40px;
 }
 
+/* ── Theme Toggle ── */
+.sidebar-theme-toggle {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    display: flex;
+    justify-content: center;
+}
+.btn-theme-toggle {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.05);
+    color: #9CA3AF;
+    font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all var(--t-fast);
+}
+.btn-theme-toggle:hover {
+    color: #F9FAFB;
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.2);
+}
+
 /* ── Progress ── */
 .progress-indicator {
     display: flex; align-items: center; gap: 12px;
@@ -373,6 +432,8 @@ body {
     .sidebar-brand { justify-content: center; padding: 16px 0; }
     .sidebar-nav .nav-item { justify-content: center; padding: 12px; }
     .sidebar-nav .nav-item i { margin: 0; }
+    .sidebar-theme-toggle { padding: 4px 0; }
+    .sidebar-theme-toggle button { width: 28px; height: 28px; font-size: .85rem; }
     .sidebar-bottom .btn-logout { justify-content: center; }
     .sidebar-bottom .btn-logout i { margin: 0; }
     .main-content { margin-left: 56px; padding: 20px 16px; }
