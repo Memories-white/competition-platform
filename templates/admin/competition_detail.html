@@ -265,7 +265,7 @@
 <!--   - description: 题目描述 -->
 <!--   - 题库选择器（presetSelector）：从预置题库中选取，自动填充字段 -->
 <!--   - 操作系统选择器（osSelector）：影响 Dockerfile 的 FROM 镜像 -->
-<!--   - 安装 Docker 复选框：在 Dockerfile 中注入 Docker CLI 安装命令 -->
+<!--   - OS 选择器：覆盖 Dockerfile 的 FROM 行以使用所选 Ubuntu/Debian 版本 -->
 <!--   - login_info: SSH 登录信息（Docker 题用） -->
 <!--   - judge_type: 判题方式（port/command/file） -->
 <!--   - judge_config: 判题配置 JSON -->
@@ -317,13 +317,6 @@
                                 <option value="Ubuntu 20.04">Ubuntu 20.04</option>
                                 <option value="Debian 12">Debian 12</option>
                             </select>
-                        </div>
-                        <div class="col-3 d-flex align-items-end">
-                            <div class="form-check mb-2">
-                                {# 勾选后在 apt-get install 行之前注入 Docker CLI 安装 RUN 命令 #}
-                                <input class="form-check-input" type="checkbox" id="installDockerChk" onchange="applyPreset()">
-                                <label class="form-check-label small" for="installDockerChk">安装 Docker</label>
-                            </div>
                         </div>
                     </div>
                     {% endif %}
@@ -991,7 +984,6 @@ if (activeTab) {
 // applyPreset(): 选择题库预设后自动填充以下字段：
 //   标题、描述、登录信息、判题方式、判题配置、Dockerfile
 // 同时根据操作系统选择器替换 FROM 行
-// 如果勾选「安装 Docker」，则在 apt-get install 之前注入 Docker CLI 安装命令
 // ═══════════════════════════════════════════════════════════════════════
 
 {% if presets %}
@@ -1017,11 +1009,7 @@ function applyOsToDockerfile() {
  * ─────────────────────────────────────────────────────────────
  * 1. 填充标题、描述、登录信息、判题方式、判题配置
  * 2. 根据 osSelector 替换 Dockerfile 的 FROM 行（Ubuntu/Debian）
- * 3. 如果勾选「安装 Docker」复选框：
- *    - Ubuntu: 注入 Docker 官方源 + docker-ce-cli 安装命令（根据版本选择 focal/jammy）
- *    - Debian: 注入 Debian Docker 源 + docker-ce-cli 安装命令（bookworm）
- *    注入位置：在第一个 apt-get install 行之前插入 RUN 命令
- * 4. 强制切换题目类型为 Docker 实操
+ * 3. 强制切换题目类型为 Docker 实操
  * ─────────────────────────────────────────────────────────────
  */
 function applyPreset() {
@@ -1043,27 +1031,6 @@ function applyPreset() {
     // 替换 FROM 行以匹配所选操作系统
     df = df.replace(/FROM .+/, 'FROM ' + osImage);
 
-    if (document.getElementById('installDockerChk').checked) {
-        // 在第一个包安装行之前注入 Docker CLI 安装命令
-        const lines = df.split('\n');
-        const result = [];
-        let injected = false;
-        for (const line of lines) {
-            if (!injected && line.includes('apt-get install')) {
-                if (osChoice.startsWith('Ubuntu')) {
-                    // Ubuntu: 根据版本确定 codename（20.04→focal, 22.04→jammy）
-                    const codename = osChoice === 'Ubuntu 20.04' ? 'focal' : 'jammy';
-                    result.push(`RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu ${codename} stable" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli`);
-                } else if (osChoice.startsWith('Debian')) {
-                    // Debian: 使用 bookworm 仓库
-                    result.push('RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - && echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli');
-                }
-                injected = true;
-            }
-            result.push(line);
-        }
-        df = result.join('\n');
-    }
     document.querySelector('#createChallengeModal textarea[name="dockerfile_content"]').value = df;
     // 使用题库预设时强制设为 Docker 实操类型
     document.querySelector('#createChallengeModal select[name="challenge_type"]').value = 'docker';

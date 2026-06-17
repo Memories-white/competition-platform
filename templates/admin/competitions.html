@@ -143,18 +143,6 @@
                         <div class="col-6"><label class="form-label">内存限制</label><input type="text" class="form-control" name="mem_limit" value="512m"></div>
                     </div>
 
-                    {# Docker CLI 安装开关 #}
-                    <div class="d-flex align-items-center justify-content-between mb-3 p-2 rounded border">
-                        <div>
-                            <i class="bi bi-box me-1"></i>
-                            <span class="small fw-medium">自动安装 Docker CLI 环境</span>
-                            <p class="text-muted small mb-0" style="font-size:.7rem;">容器内预装 docker 命令行工具，选手可直接使用 docker 命令</p>
-                        </div>
-                        <div class="form-check form-switch mb-0 ms-3">
-                            <input class="form-check-input" type="checkbox" role="switch" name="install_docker" id="installDocker" checked>
-                        </div>
-                    </div>
-
                     {# ══ 题库预设选择（可折叠） ══
                        勾选的题目将自动添加到此竞赛并构建 Docker 镜像 #}
                     <div class="mb-3">

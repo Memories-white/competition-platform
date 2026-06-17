@@ -18,26 +18,6 @@ OS_IMAGES = {
     "Debian 12": "debian:12",
 }
 
-DOCKER_INSTALL_CMDS = {
-    "Ubuntu 22.04": "RUN apt-get update && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
-    "Ubuntu 20.04": "RUN apt-get update && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
-    "Debian 12": "RUN apt-get update && apt-get install -y ca-certificates curl && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y docker-ce-cli",
-}
-
-def _inject_docker_install(dockerfile, os_choice):
-    """在第一个 apt-get install 行之前注入 Docker CLI 安装命令。"""
-    cmd = DOCKER_INSTALL_CMDS.get(os_choice)
-    if not cmd:
-        return dockerfile
-    lines = dockerfile.split("\n")
-    result = []
-    injected = False
-    for line in lines:
-        if not injected and "apt-get install" in line:
-            result.append(f"# 自动安装 Docker CLI\n{cmd}")
-            injected = True
-        result.append(line)
-    return "\n".join(result)
 from services.environment_service import (
     deploy_competition_environments,
     stop_all_environments,
@@ -108,7 +88,7 @@ def create_competition():
 
         # 从选中的题库预设创建题目
         preset_ids = request.form.getlist("preset_ids")
-        logger.info(f"Create competition '{name}': preset_ids={preset_ids}, os={request.form.get('os_choice')}, docker={request.form.get('install_docker')}")
+        logger.info(f"Create competition '{name}': preset_ids={preset_ids}, os={request.form.get('os_choice')}")
         if preset_ids:
             created = 0
             for pid in preset_ids:
@@ -121,9 +101,6 @@ def create_competition():
                 os_choice = request.form.get("os_choice", "Ubuntu 22.04")
                 os_image = OS_IMAGES.get(os_choice, "ubuntu:22.04")
                 dockerfile = dockerfile.replace("FROM ubuntu:22.04", f"FROM {os_image}")
-                # 如果勾选了安装 Docker 则注入安装命令
-                if request.form.get("install_docker") == "on":
-                    dockerfile = _inject_docker_install(dockerfile, os_choice)
                 chal = Challenge(
                     competition_id=comp.id,
                     title=preset["title"],
