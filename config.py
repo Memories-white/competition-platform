@@ -40,3 +40,11 @@ class Config:
 
     HOST_IP = _detect_host_ip()
     DOCKER_HOST = os.environ.get("DOCKER_HOST", "")
+
+    # Docker 镜像加速器（国内环境使用）
+    # 示例: "https://docker.m.daocloud.io" 或 "https://registry.cn-hangzhou.aliyuncs.com"
+    # 留空则不启用；也可通过环境变量 DOCKER_REGISTRY_MIRROR 设置
+    DOCKER_REGISTRY_MIRROR = os.environ.get("DOCKER_REGISTRY_MIRROR", "")
+
+    # 后台镜像构建间隔（秒），未构建的题目镜像会在此间隔被逐个构建
+    IMAGE_BUILD_INTERVAL_SECONDS = int(os.environ.get("IMAGE_BUILD_INTERVAL_SECONDS", "30"))

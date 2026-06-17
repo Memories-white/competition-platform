@@ -218,13 +218,28 @@ function updatePresetCount() {
     }
 }
 // ── 提交时显示加载遮罩，防止重复提交 ──
+// 8 秒安全超时：即使请求卡死也会自动隐藏遮罩、恢复按钮，防止永久卡住
 function showCreateLoading() {
     const overlay = document.getElementById('createCompLoading');
     const btn = document.getElementById('createCompSubmitBtn');
     if (overlay) overlay.style.display = 'flex';
-    if (btn) { btn.disabled = true; btn.textContent = '创建中…'; }
+    if (btn) { btn.disabled = true; btn.textContent = '正在提交，稍等…'; }
+    // 安全兜底：8 秒后强制恢复
+    window._createLoadingTimer = setTimeout(function () {
+        if (overlay) overlay.style.display = 'none';
+        if (btn) { btn.disabled = false; btn.textContent = '创建竞赛并添加题目'; }
+    }, 8000);
     return true;
 }
-document.addEventListener('DOMContentLoaded', updatePresetCount);
+// ── 页面加载时初始化 ──
+// 清理残留的 loading 遮罩（浏览器后退 / 刷新时可能残留）
+document.addEventListener('DOMContentLoaded', function () {
+    updatePresetCount();
+    const overlay = document.getElementById('createCompLoading');
+    const btn = document.getElementById('createCompSubmitBtn');
+    if (overlay) overlay.style.display = 'none';
+    if (btn) { btn.disabled = false; btn.textContent = '创建竞赛并添加题目'; }
+    if (window._createLoadingTimer) { clearTimeout(window._createLoadingTimer); }
+});
 </script>
 {% endblock %}

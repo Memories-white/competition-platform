@@ -280,6 +280,27 @@
           location.reload();
         }, 2000);
       });
+
+      // ════ SocketIO 镜像构建通知 ════
+      // 监听服务端推送的 image_build_done 事件（后台构建题目镜像的结果）。
+      // 成功用绿色 Toast，失败用红色 Toast（截断过长错误信息）。
+      socket.on("image_build_done", function (data) {
+        var body = document.getElementById("deployToastBody");
+        var toastEl = document.getElementById("deployToast");
+        if (!body || !toastEl) return;
+        if (data.success) {
+          toastEl.className = "toast align-items-center text-bg-success border-0";
+          body.innerHTML = '<i class="bi bi-check-circle me-2"></i>题目「' + data.title + '」镜像构建成功';
+        } else {
+          toastEl.className = "toast align-items-center text-bg-danger border-0";
+          var shortError = (data.error || "").length > 80
+            ? (data.error || "").substring(0, 80) + "…"
+            : (data.error || "");
+          body.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i>题目「' + data.title + '」镜像构建失败：' + shortError;
+        }
+        var toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+        toast.show();
+      });
     </script>
 
     {# 子页面可在 </body> 前插入额外脚本 #}

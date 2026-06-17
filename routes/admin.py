@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from functools import wraps
 from models import db
 from models.models import Competition, Challenge, Environment, Score, User, ExamQuestion
-from docker_engine.builder import build_image, build_image_from_template, get_image_info, get_available_templates
+from docker_engine.builder import get_image_info, get_available_templates
 from docker_engine.manager import get_container_status, start_container, stop_container, remove_container
 from data.presets import PRESETS
 
@@ -137,18 +137,10 @@ def create_competition():
                     order=created + 1,
                 )
                 db.session.add(chal)
-                db.session.flush()  # get chal.id for image tag
-                try:
-                    success, msg = build_image(chal.id, dockerfile)
-                    if success:
-                        chal.image_tag = msg
-                    else:
-                        logger.error(f"Build failed for challenge {chal.id}: {msg}")
-                except Exception as e:
-                    logger.error(f"Build exception for challenge {chal.id}: {e}")
+                db.session.flush()  # 获取 chal.id，镜像由后台定时任务异步构建
                 created += 1
             db.session.commit()
-            flash(f"竞赛创建成功，已从题库添加 {created} 道题目", "success")
+            flash(f"竞赛创建成功，已添加 {created} 道题目。Docker 镜像正在后台构建，请稍后刷新查看。", "success")
         else:
             flash("竞赛创建成功，请进入管理页添加题目", "success")
     except Exception as e:
@@ -304,26 +296,18 @@ def create_challenge(comp_id):
     db.session.flush()
 
     if challenge_type == "docker":
+        # 选择模板后，读取模板 Dockerfile 内容保存，镜像由后台定时任务异步构建
         if template_name and not dockerfile_content:
-            success, msg = build_image_from_template(template_name, challenge.id)
-            if success:
-                challenge.image_tag = msg
-                import os
-                from config import Config
-                tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
+            import os
+            from config import Config
+            tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
+            if os.path.isfile(tpl_path):
                 with open(tpl_path) as f:
                     challenge.dockerfile_content = f.read()
-            else:
-                flash(f"镜像构建失败: {msg}", "error")
-        elif dockerfile_content:
-            success, msg = build_image(challenge.id, dockerfile_content)
-            if success:
-                challenge.image_tag = msg
-            else:
-                flash(f"镜像构建失败: {msg}", "error")
+        # dockerfile_content 非空时内容已在上方赋值
 
     db.session.commit()
-    flash(f"题目「{title}」创建成功", "success")
+    flash(f"题目「{title}」创建成功，Docker 镜像将在后台自动构建。", "success")
     return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
@@ -348,14 +332,10 @@ def edit_challenge(challenge_id):
         new_dockerfile = request.form.get("dockerfile_content", "").strip()
         if new_dockerfile and new_dockerfile != challenge.dockerfile_content:
             challenge.dockerfile_content = new_dockerfile
-            success, msg = build_image(challenge.id, new_dockerfile)
-            if success:
-                challenge.image_tag = msg
-            else:
-                flash(f"镜像构建失败: {msg}", "error")
+            challenge.image_tag = ""  # 清空旧镜像 tag，触发后台重新构建
 
     db.session.commit()
-    flash("题目更新成功", "success")
+    flash("题目更新成功，Dockerfile 已修改，新镜像将在后台自动构建。", "success")
     return redirect(url_for("admin.competition_detail", comp_id=challenge.competition_id))
 
 

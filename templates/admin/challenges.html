@@ -137,7 +137,7 @@
 <div class="modal fade" id="createChallengeModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('admin.create_challenge', comp_id=competition.id) }}">
+            <form method="POST" action="{{ url_for('admin.create_challenge', comp_id=competition.id) }}" id="createChallengeForm" onsubmit="return showCreateChalLoading()">
                 <div class="modal-header">
                     <h5 class="modal-title">添加新题目</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -199,8 +199,13 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">创建并构建镜像</button>
+                    <button type="submit" class="btn btn-primary" id="createChalSubmitBtn">创建题目（镜像后台构建）</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                </div>
+                {# 提交 loading 遮罩，8 秒超时自动消失 #}
+                <div class="loading-overlay" id="createChalLoading" style="display:none;">
+                    <div class="spinner"></div>
+                    <div class="loading-text">正在创建题目…</div>
                 </div>
             </form>
         </div>
@@ -210,13 +215,36 @@
 
 {% block extra_scripts %}
 <script>
-// 选择模板时通过 AJAX 获取模板 Dockerfile 内容并填充编辑器
+// ── 模板选择器：选择预设模板后填充 Dockerfile 编辑器 ──
 document.getElementById('templateSelect').addEventListener('change', function() {
     const templateName = this.value;
     if (!templateName) return;
     fetch('/admin/competitions/{{ competition.id }}/challenges')
         .then(() => {}) // 页面已有模板数据
     // 简化处理：提交表单时带上模板名称，由后端填充
+});
+
+// ── 创建题目 loading 遮罩 ──
+function showCreateChalLoading() {
+    const overlay = document.getElementById('createChalLoading');
+    const btn = document.getElementById('createChalSubmitBtn');
+    if (overlay) overlay.style.display = 'flex';
+    if (btn) { btn.disabled = true; btn.textContent = '创建中…'; }
+    // 8 秒安全超时兜底
+    window._createChalTimer = setTimeout(function () {
+        if (overlay) overlay.style.display = 'none';
+        if (btn) { btn.disabled = false; btn.textContent = '创建题目（镜像后台构建）'; }
+    }, 8000);
+    return true;
+}
+
+// ── 页面加载时清理残留 loading 状态 ──
+document.addEventListener('DOMContentLoaded', function () {
+    const overlay = document.getElementById('createChalLoading');
+    const btn = document.getElementById('createChalSubmitBtn');
+    if (overlay) overlay.style.display = 'none';
+    if (btn) { btn.disabled = false; btn.textContent = '创建题目（镜像后台构建）'; }
+    if (window._createChalTimer) { clearTimeout(window._createChalTimer); }
 });
 </script>
 {% endblock %}

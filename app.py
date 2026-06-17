@@ -257,6 +257,52 @@ def _start_scheduler(app):
                         "error": str(e),
                     })
 
+    def auto_image_build_job():
+        """为未构建镜像的 Docker 题目后台构建镜像，通过 SocketIO 推送通知。"""
+        with app.app_context():
+            from models.models import Challenge
+            from docker_engine.builder import build_challenge_image
+            # 查找所有 docker 类型且尚未构建镜像的题目
+            unbuilt = Challenge.query.filter_by(challenge_type="docker").filter(
+                Challenge.image_tag == ""
+            ).all()
+            for challenge in unbuilt:
+                try:
+                    logger.info(f"Image build: starting for challenge {challenge.id} '{challenge.title}'")
+                    result = build_challenge_image(challenge.id, challenge.dockerfile_content)
+                    if result["success"]:
+                        challenge.image_tag = result["image_tag"]
+                        db.session.commit()
+                        logger.info(f"Image build: success for challenge {challenge.id}, tag={result['image_tag']}")
+                        socketio.emit("image_build_done", {
+                            "challenge_id": challenge.id,
+                            "title": challenge.title,
+                            "success": True,
+                            "image_tag": result["image_tag"],
+                            "error": "",
+                        })
+                    else:
+                        logger.error(f"Image build: failed for challenge {challenge.id}: {result['error']}")
+                        socketio.emit("image_build_done", {
+                            "challenge_id": challenge.id,
+                            "title": challenge.title,
+                            "success": False,
+                            "image_tag": "",
+                            "error": result["error"],
+                        })
+                except Exception as e:
+                    logger.error(f"Image build: exception for challenge {challenge.id}: {e}")
+                    try:
+                        socketio.emit("image_build_done", {
+                            "challenge_id": challenge.id,
+                            "title": challenge.title,
+                            "success": False,
+                            "image_tag": "",
+                            "error": str(e),
+                        })
+                    except Exception:
+                        pass
+
     def auto_cleanup_job():
         """对已结束的竞赛执行自动判题并清理环境。"""
         with app.app_context():
@@ -296,6 +342,13 @@ def _start_scheduler(app):
         replace_existing=True,
     )
     scheduler.add_job(
+        auto_image_build_job,
+        "interval",
+        seconds=app.config.get("IMAGE_BUILD_INTERVAL_SECONDS", 30),
+        id="auto_image_build",
+        replace_existing=True,
+    )
+    scheduler.add_job(
         auto_judge_job,
         "interval",
         seconds=app.config.get("JUDGE_INTERVAL_SECONDS", 30),
@@ -311,6 +364,7 @@ def _start_scheduler(app):
     )
     scheduler.start()
     logger.info(f"Auto-build scheduler started (interval: {app.config.get('AUTO_BUILD_INTERVAL_SECONDS', 15)}s)")
+    logger.info(f"Auto-image-build scheduler started (interval: {app.config.get('IMAGE_BUILD_INTERVAL_SECONDS', 30)}s)")
     logger.info(f"Auto-judge scheduler started (interval: {app.config.get('JUDGE_INTERVAL_SECONDS', 30)}s)")
     logger.info(f"Auto-cleanup scheduler started (interval: {app.config.get('CLEANUP_INTERVAL_SECONDS', 120)}s)")
 
