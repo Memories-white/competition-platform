@@ -230,6 +230,9 @@ def delete_competition(comp_id):
         return redirect(url_for("admin.competitions"))
 
     remove_all_environments(comp_id)
+    # Delete scores and challenges first to avoid FK constraint issues
+    Score.query.filter_by(competition_id=comp_id).delete()
+    Challenge.query.filter_by(competition_id=comp_id).delete()
     db.session.delete(comp)
     db.session.commit()
     flash("竞赛已删除", "success")
