@@ -63,10 +63,15 @@
 [data-theme="dark"] .rank-gold { background: #422006 !important; }
 [data-theme="dark"] .rank-bronze { background: #1E293B !important; }
 [data-theme="dark"] .bg-light { background: #1E293B !important; }
-[data-theme="dark"] .table-hover tbody tr:hover > td,
-[data-theme="dark"] .table-hover tbody tr:hover > th {
-    --bs-table-accent-bg: #334155;
-    background-color: #334155;
+[data-theme="dark"] .table-hover > tbody > tr:hover > *,
+[data-bs-theme="dark"] .table-hover > tbody > tr:hover > * {
+    background-color: #334155 !important;
+    color: #E2E8F0 !important;
+}
+[data-theme="dark"] .table,
+[data-bs-theme="dark"] .table {
+    --bs-table-hover-bg: #334155;
+    --bs-table-hover-color: #E2E8F0;
 }
 
 /* ── Reset & Base ── */
