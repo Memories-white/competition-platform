@@ -132,6 +132,7 @@ def create_app():
         db.create_all()
         _migrate_database(app)
         _seed_admin(app)
+        _sync_orphan_containers(app)
         _start_scheduler(app)
 
     return app
@@ -194,7 +195,95 @@ def _migrate_database(app):
         conn.close()
 
 
-def _seed_admin(app):
+def _sync_orphan_containers(app):
+    """启动时将 Docker 中已有但数据库未记录的 comp-* 容器同步入库。
+    容器命名格式：comp-{竞赛ID}-u{用户ID}-c{题目ID}"""
+    from models.models import Environment, Challenge, Competition, User
+    import re
+
+    try:
+        from docker_engine.manager import get_client
+        client = get_client()
+    except Exception:
+        logger.info("Sync containers: Docker unavailable, skipping")
+        return
+
+    try:
+        containers = client.containers.list(all=True, sparse=True)
+    except Exception as e:
+        logger.warning(f"Sync containers: failed to list containers: {e}")
+        return
+
+    pattern = re.compile(r"^comp-(\d+)-u(\d+)-c(\d+)$")
+    synced = 0
+
+    for c in containers:
+        name = c.name
+        match = pattern.match(name)
+        if not match:
+            continue
+
+        comp_id = int(match.group(1))
+        user_id = int(match.group(2))
+        challenge_id = int(match.group(3))
+
+        # 检查数据库是否已有此环境记录
+        existing = Environment.query.filter_by(
+            competition_id=comp_id,
+            user_id=user_id,
+            challenge_id=challenge_id,
+        ).first()
+        if existing:
+            continue
+
+        # 验证关联记录存在
+        comp = db.session.get(Competition, comp_id)
+        user = db.session.get(User, user_id)
+        chal = db.session.get(Challenge, challenge_id)
+        if not all([comp, user, chal]):
+            logger.warning(f"Sync containers: skipping orphan {name} (missing comp/user/chal)")
+            continue
+
+        # 获取容器实际状态和端口映射
+        host_port = 0
+        web_port = 0
+        status = "running"
+        try:
+            cinfo = client.containers.get(c.name)
+            status = cinfo.status
+            # 解析端口映射：Docker 返回 "30000/tcp" -> [{"HostPort": "30000"}]
+            ports = cinfo.attrs.get("NetworkSettings", {}).get("Ports", {}) or {}
+            for container_port, bindings in ports.items():
+                if bindings and isinstance(bindings, list) and len(bindings) > 0:
+                    hp = int(bindings[0].get("HostPort", 0))
+                    if "22/tcp" in container_port:
+                        host_port = hp
+                    elif "80/tcp" in container_port or "443/tcp" in container_port or "5000/tcp" in container_port:
+                        web_port = hp
+                    elif web_port == 0 and hp > 0:
+                        web_port = hp  # 兜底：最后一个非 22 的端口
+        except Exception:
+            pass
+
+        env = Environment(
+            competition_id=comp_id,
+            user_id=user_id,
+            challenge_id=challenge_id,
+            container_id=c.name,  # 用容器名作为标识
+            container_name=name,
+            host_port=host_port,
+            web_port=web_port,
+            status=status,
+        )
+        db.session.add(env)
+        synced += 1
+        logger.info(f"Sync containers: recovered {name} (status={status}, port={host_port})")
+
+    if synced > 0:
+        db.session.commit()
+        logger.info(f"Sync containers: {synced} orphan containers recovered to database")
+    else:
+        logger.info("Sync containers: no orphans found")
     from models.models import User
     import bcrypt
 
