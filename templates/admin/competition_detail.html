@@ -276,24 +276,32 @@ const socket = io();
 const deployBtn = document.getElementById('deployBtn');
 const logDiv = document.getElementById('deployLog');
 const logContent = document.getElementById('logContent');
+let deployTimeout = null;
+
+function addLog(msg, cls) {
+    const line = document.createElement('div');
+    line.className = cls || 'info';
+    line.textContent = msg;
+    logContent.appendChild(line);
+    logContent.scrollTop = logContent.scrollHeight;
+}
 
 socket.on('deploy_progress', function(data) {
     logDiv.style.display = 'block';
-    const line = document.createElement('div');
     const cls = data.message.includes('[失败]')||data.message.includes('[错误]') ? 'error' :
                 data.message.includes('[成功]') ? 'success' : 'info';
-    line.className = cls;
-    line.textContent = `[${data.current}/${data.total}] ${data.message}`;
-    logContent.appendChild(line);
-    logContent.scrollTop = logContent.scrollHeight;
+    addLog(`[${data.current}/${data.total}] ${data.message}`, cls);
+    // Reset timeout on each progress event
+    if (deployTimeout) { clearTimeout(deployTimeout); }
+    deployTimeout = setTimeout(() => {
+        addLog('[警告] 部署超时，可能 Docker 操作耗时较长或已卡死', 'warning');
+    }, 60000);
 });
 
 socket.on('deploy_complete', function(data) {
-    const line = document.createElement('div');
-    line.className = data.failed > 0 ? 'warning' : 'success';
-    line.textContent = `========== 完成: 成功 ${data.success}, 失败 ${data.failed} ==========`;
-    logContent.appendChild(line);
-    logContent.scrollTop = logContent.scrollHeight;
+    if (deployTimeout) { clearTimeout(deployTimeout); deployTimeout = null; }
+    addLog(`========== 完成: 成功 ${data.success}, 失败 ${data.failed} ==========`,
+           data.failed > 0 ? 'warning' : 'success');
     deployBtn.disabled = false;
     deployBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
     setTimeout(() => location.reload(), 3000);
@@ -304,25 +312,30 @@ async function startDeploy() {
     deployBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 部署中...';
     logContent.innerHTML = '';
     logDiv.style.display = 'block';
-    const startLine = document.createElement('div');
-    startLine.className = 'info';
-    startLine.textContent = '正在启动部署任务...';
-    logContent.appendChild(startLine);
+    addLog('正在启动部署任务...', 'info');
 
     try {
-        await fetch('{{ url_for("admin.deploy_environments", comp_id=competition.id) }}', {
+        const resp = await fetch('{{ url_for("admin.deploy_environments", comp_id=competition.id) }}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
         });
+        const data = await resp.json();
+        if (!data.docker_ok) {
+            addLog('[警告] Docker 服务未连接，请确认 Docker Desktop 已启动', 'warning');
+        }
+        // Set a fallback timeout — if nothing happens within 15s, warn the user
+        deployTimeout = setTimeout(() => {
+            addLog('[警告] 15 秒内未收到部署进度，请确认 Docker 已启动且镜像已构建', 'warning');
+            deployBtn.disabled = false;
+            deployBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+        }, 15000);
     } catch (e) {
-        const line = document.createElement('div');
-        line.className = 'error';
-        line.textContent = `[错误] ${e.message}`;
-        logContent.appendChild(line);
+        addLog(`[错误] 请求失败: ${e.message}`, 'error');
         deployBtn.disabled = false;
         deployBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
     }
 }
+
 
 // Remember active tab
 const activeTab = sessionStorage.getItem('compActiveTab');

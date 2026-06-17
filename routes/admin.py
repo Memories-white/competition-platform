@@ -277,27 +277,40 @@ def delete_challenge(challenge_id):
 @admin_bp.route("/competitions/<int:comp_id>/deploy", methods=["POST"])
 @admin_required
 def deploy_environments(comp_id):
-    from app import socketio
+    from app import socketio, logger
     from flask import current_app
 
     app = current_app._get_current_object()
+
+    # Quick pre-check: Docker available?
+    docker_ok = True
+    try:
+        from docker_engine.manager import get_client
+        get_client()
+    except Exception as e:
+        docker_ok = False
+        logger.warning(f"Deploy pre-check: Docker not available ({e})")
 
     def _deploy():
         try:
             with app.app_context():
                 deploy_competition_environments(comp_id, socketio=socketio)
         except Exception as e:
-            socketio.emit("deploy_progress", {
-                "progress": 0, "total": 0, "current": 0,
-                "message": f"[系统错误] Docker 服务可能未启动: {e}"
-            })
-            socketio.emit("deploy_complete", {"success": 0, "failed": 0, "total": 0})
+            logger.error(f"Deploy error: {e}")
+            try:
+                socketio.emit("deploy_progress", {
+                    "progress": 0, "total": 0, "current": 0,
+                    "message": f"[系统错误] {e}"
+                })
+                socketio.emit("deploy_complete", {"success": 0, "failed": 0, "total": 0})
+            except Exception:
+                pass
 
     thread = threading.Thread(target=_deploy)
     thread.start()
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({"success": True, "message": "部署任务已启动"})
+        return jsonify({"success": True, "message": "部署任务已启动", "docker_ok": docker_ok})
     flash("部署任务已启动，请观察下方日志了解进度", "success")
     return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 

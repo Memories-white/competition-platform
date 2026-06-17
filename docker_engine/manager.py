@@ -13,10 +13,12 @@ def get_client():
     global _client
     if _client is None:
         try:
-            _client = docker.from_env()
+            _client = docker.from_env(timeout=5)
+            _client.ping()
         except Exception as e:
+            _client = None
             logger.error(f"Failed to connect to Docker: {e}")
-            raise
+            raise ConnectionError(f"Docker 服务未启动或无法连接: {e}")
     return _client
 
 

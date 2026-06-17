@@ -17,8 +17,9 @@
 <div class="sidebar">
     <a href="/" class="brand"><i class="bi bi-cloud-fill"></i> 云计算竞赛平台</a>
 
+    <div class="sidebar-nav">
     {% if current_user.role == 'admin' %}
-    <div class="nav-section mt-3">管理</div>
+    <div class="nav-section">管理</div>
     <a class="nav-link {{ 'active' if request.path.startswith('/admin/') and 'competition' in request.path and 'logs' not in request.path else '' }}"
        href="{{ url_for('admin.competitions') }}">
         <i class="bi bi-trophy"></i> 竞赛管理
@@ -37,7 +38,7 @@
         <i class="bi bi-speedometer2"></i> 仪表盘
     </a>
     {% else %}
-    <div class="nav-section mt-3">比赛</div>
+    <div class="nav-section">比赛</div>
     <a class="nav-link {{ 'active' if request.path == '/contestant/' else '' }}"
        href="{{ url_for('contestant.dashboard') }}">
         <i class="bi bi-pc-display"></i> 我的环境
@@ -47,8 +48,9 @@
         <i class="bi bi-trophy"></i> 排行榜
     </a>
     {% endif %}
+    </div>
 
-    <div class="user-info mt-auto">
+    <div class="sidebar-bottom">
         <i class="bi bi-person-circle"></i> {{ current_user.username }}
         <span class="ms-2 badge bg-secondary">{{ '管理员' if current_user.role=='admin' else current_user.team_name or '选手' }}</span>
     </div>

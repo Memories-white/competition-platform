@@ -49,12 +49,13 @@ body {
     background: var(--sidebar-bg);
     color: #B0B0C0;
     z-index: 1000;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 .sidebar .brand {
     display: block;
+    flex-shrink: 0;
     padding: 20px 20px 16px;
     font-size: 1.05rem;
     font-weight: 700;
@@ -67,8 +68,13 @@ body {
     color: var(--color-primary-light);
     margin-right: 8px;
 }
+.sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 8px;
+}
 .sidebar .nav-section {
-    padding: 7px 20px 3px;
+    padding: 10px 20px 3px;
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -81,6 +87,7 @@ body {
     border-left: 3px solid transparent;
     transition: all var(--transition-fast);
     text-decoration: none;
+    display: block;
 }
 .sidebar .nav-link:hover {
     color: #E8E8F0;
@@ -97,14 +104,17 @@ body {
     margin-right: 8px;
     text-align: center;
 }
-.sidebar .user-info {
-    padding: 14px 20px;
-    font-size: 0.8rem;
-    color: #787898;
+.sidebar-bottom {
+    flex-shrink: 0;
     border-top: 1px solid rgba(255,255,255,0.06);
 }
+.sidebar .user-info {
+    padding: 12px 20px 4px;
+    font-size: 0.8rem;
+    color: #787898;
+}
 .sidebar .logout-btn {
-    padding: 0 16px 16px;
+    padding: 8px 16px 16px;
 }
 .sidebar .logout-btn .btn {
     color: #9D9DB0;
