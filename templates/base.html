@@ -103,11 +103,37 @@
     {% endwith %}
 
     {% block content %}{% endblock %}
+
+<!-- Auto-deploy toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+    <div class="toast align-items-center border-0" id="deployToast" role="alert" aria-live="assertive" aria-atomic="true" style="min-width:280px;">
+        <div class="d-flex">
+            <div class="toast-body" id="deployToastBody"></div>
+            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button>
+        </div>
+    </div>
+</div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/socket.io@4.7.5/client-dist/socket.io.min.js"></script>
-<script>(function(){function i(t){var e=document.getElementById('themeIcon');if(e)e.className=t==='dark'?'bi bi-sun-fill':'bi bi-moon-fill';}document.addEventListener('DOMContentLoaded',function(){i(document.documentElement.getAttribute('data-theme'));});window.toggleTheme=function(){var c=document.documentElement.getAttribute('data-theme'),n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);document.documentElement.setAttribute('data-bs-theme',n);localStorage.setItem('theme',n);i(n);};})();</script>
+<script>(function(){function i(t){var e=document.getElementById('themeIcon');if(e)e.className=t==='dark'?'bi bi-sun-fill':'bi bi-moon-fill';}document.addEventListener('DOMContentLoaded',function(){i(document.documentElement.getAttribute('data-theme'));});window.toggleTheme=function(){var c=document.documentElement.getAttribute('data-theme'),n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);document.documentElement.setAttribute('data-bs-theme',n);localStorage.setItem('theme',n);i(n);};})();
+
+// Auto-deploy toast notification
+var socket = io();
+socket.on('auto_deploy_done', function(data) {
+    var body = document.getElementById('deployToastBody');
+    var toastEl = document.getElementById('deployToast');
+    if (!body || !toastEl) return;
+    if (data.error) {
+        toastEl.className = 'toast align-items-center text-bg-danger border-0';
+        body.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i><strong>' + data.competition + '</strong> 部署失败: ' + data.error;
+    } else {
+        toastEl.className = 'toast align-items-center text-bg-success border-0';
+        body.innerHTML = '<i class="bi bi-check-circle me-2"></i><strong>' + data.competition + '</strong> 自动部署完成！成功 ' + data.success + ' 个环境' + (data.failed > 0 ? '，失败 ' + data.failed + ' 个' : '');
+    }
+    new bootstrap.Toast(toastEl, { delay: 8000 }).show();
+});</script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

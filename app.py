@@ -190,13 +190,26 @@ def _start_scheduler(app):
             for comp in active_comps:
                 try:
                     logger.info(f"Auto-build [{comp.name}]: starting automatic deployment...")
-                    result = deploy_competition_environments(comp.id)
+                    result = deploy_competition_environments(comp.id, socketio=socketio)
                     comp.auto_deployed = True
                     comp.deployed_at = datetime.now(timezone.utc)
                     db.session.commit()
-                    logger.info(f"Auto-build [{comp.name}]: success={result.get('success', 0)}, failed={result.get('failed', 0)}")
+                    succ = result.get('success', 0)
+                    fail = result.get('failed', 0)
+                    logger.info(f"Auto-build [{comp.name}]: success={succ}, failed={fail}")
+                    socketio.emit("auto_deploy_done", {
+                        "competition": comp.name,
+                        "success": succ,
+                        "failed": fail,
+                    })
                 except Exception as e:
                     logger.error(f"Auto-build error [{comp.name}]: {e}")
+                    socketio.emit("auto_deploy_done", {
+                        "competition": comp.name,
+                        "success": 0,
+                        "failed": 0,
+                        "error": str(e),
+                    })
 
     def auto_cleanup_job():
         """Auto-judge and clean up environments for finished competitions."""
