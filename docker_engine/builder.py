@@ -8,9 +8,9 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-BUILD_MAX_RETRIES = 2
-BUILD_RETRY_DELAY = 3  # seconds
-BUILD_TIMEOUT = 300     # 单次构建超时（秒），5分钟足够拉取和安装
+BUILD_MAX_RETRIES = 1       # 首次失败后再重试 1 次
+BUILD_RETRY_DELAY = 5       # 重试间隔（秒）
+BUILD_TIMEOUT = 180         # 单次构建超时（秒），3 分钟足够
 
 _client = None
 

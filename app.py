@@ -415,9 +415,8 @@ def _start_scheduler(app):
 
     def auto_image_build_job():
         """为未构建镜像的 Docker 题目后台构建镜像，通过 SocketIO 推送通知。
-        每次只构建一个题目（由定时器周期性逐个构建），防止单次构建挂起阻塞调度器。"""
+        每次只构建一个题目。Docker SDK 自带 timeout 保护，无需额外线程包装。"""
         with app.app_context():
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
             from models.models import Challenge
             from docker_engine.builder import build_challenge_image
             # 只取第一个未构建的题目，每次调度只构建一个
@@ -428,14 +427,7 @@ def _start_scheduler(app):
                 return
             try:
                 logger.info(f"镜像构建：开始构建题目 {challenge.id}「{challenge.title}」 | Image build: starting challenge {challenge.id}")
-                # 用独立线程执行构建，设置 310 秒超时（比 BUILD_TIMEOUT 多 10 秒容错）
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(build_challenge_image, challenge.id, challenge.dockerfile_content)
-                    try:
-                        result = future.result(timeout=310)
-                    except FuturesTimeout:
-                        logger.error(f"镜像构建：题目 {challenge.id} 构建超时 | Image build: timeout for challenge {challenge.id}")
-                        result = {"success": False, "image_tag": "", "error": "构建超时（超过5分钟）"}
+                result = build_challenge_image(challenge.id, challenge.dockerfile_content)
                 if result["success"]:
                     challenge.image_tag = result["image_tag"]
                     db.session.commit()
