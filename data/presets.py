@@ -4,13 +4,13 @@ PRESETS = [
     {
         "id": 0,
         "title": "Nginx Web 服务搭建（测试）",
-        "description": "【测试用题目】快速验证系统构建、部署、判题全流程。在容器中安装并启动 Nginx Web 服务器，确保 80 端口可访问。适用于新人入门与平台功能自测。",
+        "description": "【测试用题目】SSH 进入容器后，使用 apt-get 安装 Nginx 并启动服务。步骤：① apt-get update ② apt-get install -y nginx ③ service nginx start ④ curl localhost 验证。完成后提交判题（检测 80 端口）。",
         "category": "测试",
         "difficulty": "基础",
-        "login_info": "SSH 用户名 root 密码 password / Web 访问 http://IP:端口",
+        "login_info": "SSH 用户名 root 密码 password",
         "judge_type": "port",
         "judge_config": '{"port": 80}',
-        "dockerfile_content": "FROM ubuntu:22.04\n\nRUN apt-get update && apt-get install -y \\\n    nginx openssh-server vim curl && \\\n    echo 'root:password' | chpasswd && \\\n    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config\n\nEXPOSE 22 80\n\nCMD service ssh start && nginx -g 'daemon off;'",
+        "dockerfile_content": "FROM ubuntu:22.04\n\nRUN apt-get update && apt-get install -y \\\n    openssh-server vim curl && \\\n    echo 'root:password' | chpasswd && \\\n    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config\n\nEXPOSE 22 80\n\nCMD service ssh start && tail -f /dev/null",
     },
     {
         "id": 1,
