@@ -91,21 +91,39 @@ def build_image(challenge_id: int, dockerfile_content: str, max_retries: int = N
     retries = max_retries if max_retries is not None else BUILD_MAX_RETRIES
 
     def _do_build(dockerfile):
-        """内部构建循环，返回 (bool, error_msg)"""
+        """内部构建循环，使用流式 API + 总耗时超时控制，返回 (bool, error_msg)"""
         last_error = ""
         for attempt in range(retries + 1):
             try:
                 client = get_client()
-                client.images.build(
+                # 使用底层流式 API 以支持总耗时超时
+                stream = client.api.build(
                     fileobj=io.BytesIO(dockerfile.encode()),
                     tag=image_tag,
                     rm=True,
                     forcerm=True,
-                    timeout=BUILD_TIMEOUT,
+                    decode=True,
                 )
-                if attempt > 0:
-                    logger.info(f"构建重试 {attempt} 次后成功，题目 {challenge_id} | Build succeeded on retry {attempt}")
-                return True, ""
+                start = time.time()
+                error_lines = []
+                for chunk in stream:
+                    # 总耗时超时检查
+                    if time.time() - start > BUILD_TIMEOUT:
+                        stream.close()
+                        last_error = f"构建超时（超过 {BUILD_TIMEOUT} 秒）"
+                        logger.error(f"构建{attempt + 1}超时，题目{challenge_id} | Build timeout after {BUILD_TIMEOUT}s")
+                        break
+                    if "stream" in chunk:
+                        pass  # 正常构建输出，跳过
+                    elif "error" in chunk:
+                        error_lines.append(chunk["error"])
+                else:
+                    # for-else: 流正常结束（没超时）
+                    if not error_lines:
+                        if attempt > 0:
+                            logger.info(f"构建重试 {attempt} 次后成功，题目 {challenge_id} | Build succeeded on retry {attempt}")
+                        return True, ""
+                    last_error = _format_error("\n".join(error_lines))
             except docker.errors.BuildError as e:
                 error_msg = ""
                 for line in e.build_log:
@@ -153,16 +171,29 @@ def build_image_from_template(template_name: str, challenge_id: int, max_retries
     for attempt in range(retries + 1):
         try:
             client = get_client()
-            client.images.build(
+            # 流式 API + 总耗时超时
+            stream = client.api.build(
                 path=template_path,
                 tag=image_tag,
                 rm=True,
                 forcerm=True,
-                timeout=BUILD_TIMEOUT,
+                decode=True,
             )
-            if attempt > 0:
-                logger.info(f"模板构建重试 {attempt} 次后成功，题目 {challenge_id} | Template build succeeded on retry {attempt}")
-            return True, image_tag
+            start = time.time()
+            error_lines = []
+            for chunk in stream:
+                if time.time() - start > BUILD_TIMEOUT:
+                    stream.close()
+                    last_error = f"构建超时（超过 {BUILD_TIMEOUT} 秒）"
+                    break
+                if "error" in chunk:
+                    error_lines.append(chunk["error"])
+            else:
+                if not error_lines:
+                    if attempt > 0:
+                        logger.info(f"模板构建重试 {attempt} 次后成功，题目 {challenge_id} | Template build succeeded on retry {attempt}")
+                    return True, image_tag
+                last_error = _format_error("\n".join(error_lines))
         except docker.errors.BuildError as e:
             error_msg = ""
             for line in e.build_log:
