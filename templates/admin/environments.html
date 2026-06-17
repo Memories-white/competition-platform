@@ -8,11 +8,9 @@
         <h2 class="mt-1"><i class="bi bi-hdd-stack"></i> {{ competition.name }} - 环境管理</h2>
     </div>
     <div>
-        <form method="POST" action="{{ url_for('admin.deploy_environments', comp_id=competition.id) }}" class="d-inline">
-            <button type="submit" class="btn btn-success" id="deployBtn">
-                <i class="bi bi-rocket-takeoff"></i> 一键部署
-            </button>
-        </form>
+        <button class="btn btn-success" id="deployBtn" onclick="startDeploy()">
+            <i class="bi bi-rocket-takeoff"></i> 一键部署
+        </button>
         <form method="POST" action="{{ url_for('admin.stop_all', comp_id=competition.id) }}" class="d-inline">
             <button type="submit" class="btn btn-warning">
                 <i class="bi bi-stop-circle"></i> 全部停止
@@ -109,7 +107,7 @@ socket.on('deploy_progress', function(data) {
     line.className = cls;
     line.textContent = `[${data.current}/${data.total}] ${data.message}`;
     logContent.appendChild(line);
-    logDiv.scrollTop = logDiv.scrollHeight;
+    logContent.scrollTop = logContent.scrollHeight;
 });
 
 socket.on('deploy_complete', function(data) {
@@ -118,7 +116,54 @@ socket.on('deploy_complete', function(data) {
     line.className = 'success';
     line.textContent = `========== 部署完成: 成功 ${data.success}, 失败 ${data.failed} ==========`;
     logContent.appendChild(line);
-    setTimeout(() => location.reload(), 2000);
+    logContent.scrollTop = logContent.scrollHeight;
+    const btn = document.getElementById('deployBtn');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+    setTimeout(() => location.reload(), 3000);
 });
+
+async function startDeploy() {
+    const btn = document.getElementById('deployBtn');
+    const logDiv = document.getElementById('deployLog');
+    const logContent = document.getElementById('logContent');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 部署中...';
+
+    // Clear and show log
+    logContent.innerHTML = '';
+    logDiv.style.display = 'block';
+
+    const startLine = document.createElement('div');
+    startLine.className = 'info';
+    startLine.textContent = '正在启动部署任务...';
+    logContent.appendChild(startLine);
+
+    try {
+        const resp = await fetch('{{ url_for("admin.deploy_environments", comp_id=competition.id) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        if (!resp.ok) {
+            const line = document.createElement('div');
+            line.className = 'error';
+            line.textContent = `[错误] 请求失败: HTTP ${resp.status}`;
+            logContent.appendChild(line);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+        }
+    } catch (e) {
+        const line = document.createElement('div');
+        line.className = 'error';
+        line.textContent = `[错误] 请求失败: ${e.message}`;
+        logContent.appendChild(line);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+    }
+}
 </script>
 {% endblock %}

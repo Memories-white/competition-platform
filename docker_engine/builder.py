@@ -9,6 +9,25 @@ logger = logging.getLogger(__name__)
 _client = None
 
 
+_HINT_MSG = (
+    "【提示】如果你遇到类似报错，说明 Docker 没有配置镜像加速，"
+    "需要梯子或者其他工具来访问 Docker Hub。如果看不懂如何解决，"
+    "请把这段错误信息发给 AI 询问。"
+)
+
+
+def _format_error(msg: str) -> str:
+    msg_lower = msg.lower()
+    for kw in [
+        "dial tcp", "connection refused", "failed to resolve",
+        "dialing", "connectex", "registry", "no such host",
+        "timeout", "TLS handshake timeout", "no HTTPS proxy",
+    ]:
+        if kw in msg_lower:
+            return msg + " | " + _HINT_MSG
+    return msg
+
+
 def get_client():
     global _client
     if _client is None:
@@ -38,9 +57,9 @@ def build_image(challenge_id: int, dockerfile_content: str) -> tuple:
                 error_msg += line["stream"]
             elif "error" in line:
                 error_msg += line["error"]
-        return False, error_msg or str(e)
+        return False, _format_error(error_msg or str(e))
     except Exception as e:
-        return False, str(e)
+        return False, _format_error(str(e))
 
 
 def build_image_from_template(template_name: str, challenge_id: int) -> tuple:
@@ -65,9 +84,9 @@ def build_image_from_template(template_name: str, challenge_id: int) -> tuple:
                 error_msg += line["stream"]
             elif "error" in line:
                 error_msg += line["error"]
-        return False, error_msg or str(e)
+        return False, _format_error(error_msg or str(e))
     except Exception as e:
-        return False, str(e)
+        return False, _format_error(str(e))
 
 
 def get_image_info(tag: str) -> dict | None:

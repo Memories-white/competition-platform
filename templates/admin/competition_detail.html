@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}{{ competition.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <a href="{{ url_for('admin.competitions') }}" class="text-decoration-none">&larr; 竞赛列表</a>
+        <h4 class="mt-1">{{ competition.name }}
+            <span class="badge bg-{{ 'success' if competition.status=='active' else 'secondary' if competition.status=='draft' else 'info' }} ms-2">
+                {{ {'draft':'草稿','active':'进行中','finished':'已结束'}.get(competition.status, competition.status) }}
+            </span>
+        </h4>
+    </div>
+    <div class="d-flex gap-2">
+        <form method="POST" action="{{ url_for('admin.update_competition_status', comp_id=competition.id) }}">
+            <input type="hidden" name="status" value="{{ 'active' if competition.status=='draft' else 'finished' if competition.status=='active' else 'draft' }}">
+            <button class="btn btn-{{ 'success' if competition.status=='draft' else 'warning' if competition.status=='active' else 'secondary' }} btn-sm">
+                {% if competition.status == 'draft' %}<i class="bi bi-play-fill"></i> 开始竞赛
+                {% elif competition.status == 'active' %}<i class="bi bi-stop-fill"></i> 结束竞赛
+                {% else %}<i class="bi bi-arrow-repeat"></i> 重新打开{% endif %}
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-pills mb-4" id="compTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-challenges" type="button">
+            <i class="bi bi-list-check"></i> 题目管理 ({{ challenges|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-environments" type="button">
+            <i class="bi bi-hdd-stack"></i> 环境部署
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-scores" type="button">
+            <i class="bi bi-bar-chart"></i> 成绩排名
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- ========== TAB 1: Challenges ========== -->
+    <div class="tab-pane fade show active" id="tab-challenges">
+        <div class="d-flex justify-content-between mb-3">
+            <h5><i class="bi bi-list-check"></i> 题目列表</h5>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createChallengeModal">
+                <i class="bi bi-plus-lg"></i> 添加题目
+            </button>
+        </div>
+
+        {% if challenges %}
+        <div class="row g-3">
+            {% for chal in challenges %}
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <h6 class="card-title">#{{ chal.order }} {{ chal.title }}</h6>
+                            <span class="badge bg-primary">{{ chal.points }}分</span>
+                        </div>
+                        <p class="text-muted small mb-2">{{ chal.description or '暂无描述' }}</p>
+                        <div class="small mb-2">
+                            判题: <span class="badge bg-secondary">{{ {'port':'端口','command':'命令','file':'文件'}.get(chal.judge_type, chal.judge_type) }}</span>
+                            镜像: {% if chal.image_tag %}<span class="badge bg-success">已构建</span>{% else %}<span class="badge bg-warning">未构建</span>{% endif %}
+                        </div>
+                        <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#editChalModal{{ chal.id }}"><i class="bi bi-pencil"></i> 编辑</button>
+                        <form method="POST" action="{{ url_for('admin.delete_challenge', challenge_id=chal.id) }}" class="d-inline" onsubmit="return confirm('确定删除此题目？')">
+                            <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> 删除</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">暂无题目，点击右上角添加</div>
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB 2: Environments ========== -->
+    <div class="tab-pane fade" id="tab-environments">
+        <div class="d-flex justify-content-between mb-3">
+            <h5><i class="bi bi-hdd-stack"></i> 环境实例</h5>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success btn-sm" id="deployBtn" onclick="startDeploy()">
+                    <i class="bi bi-rocket-takeoff"></i> 一键部署
+                </button>
+                <form method="POST" action="{{ url_for('admin.stop_all', comp_id=competition.id) }}" class="d-inline">
+                    <button class="btn btn-warning btn-sm"><i class="bi bi-stop-circle"></i> 全部停止</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin.remove_all', comp_id=competition.id) }}" class="d-inline" onsubmit="return confirm('确定删除所有容器？')">
+                    <button class="btn btn-danger btn-sm"><i class="bi bi-trash"></i> 全部清除</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Deploy Log -->
+        <div class="deploy-log mb-3" id="deployLog" style="display:none;">
+            <div class="d-flex justify-content-between mb-2">
+                <strong>部署日志</strong>
+                <button class="btn btn-sm btn-outline-light" onclick="this.parentElement.parentElement.style.display='none'">关闭</button>
+            </div>
+            <div id="logContent"></div>
+        </div>
+
+        {% if environments %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead class="table-dark">
+                    <tr><th>选手</th><th>队伍</th><th>题目</th><th>容器名</th><th>端口</th><th>状态</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                    {% for env in environments %}
+                    <tr>
+                        <td>{{ env.username }}</td>
+                        <td>{{ env.team_name }}</td>
+                        <td>{{ env.challenge_title }}</td>
+                        <td><code class="small">{{ env.container_name }}</code></td>
+                        <td>{{ env.host_port or '-' }}</td>
+                        <td><span class="badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">{{ {'running':'运行','stopped':'停止','pending':'等待'}.get(env.status, env.status) }}</span></td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='start') }}" class="d-inline"><button class="btn btn-success btn-sm" title="启动"><i class="bi bi-play-fill"></i></button></form>
+                            <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='stop') }}" class="d-inline"><button class="btn btn-warning btn-sm" title="停止"><i class="bi bi-stop-fill"></i></button></form>
+                            <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='remove') }}" class="d-inline" onsubmit="return confirm('确定删除？')"><button class="btn btn-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button></form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">暂无环境实例，请先添加题目并构建镜像后点击"一键部署"</div>
+        {% endif %}
+    </div>
+
+    <!-- ========== TAB 3: Scores ========== -->
+    <div class="tab-pane fade" id="tab-scores">
+        <h5 class="mb-3"><i class="bi bi-bar-chart"></i> 成绩与排名</h5>
+        {% if rankings and challenges %}
+        <div class="table-responsive">
+            <table class="table table-hover scoreboard-table">
+                <thead>
+                    <tr><th>排名</th><th>队伍</th><th>选手</th>
+                    {% for chal in challenges %}<th class="text-center">{{ chal.title }}<br><small class="fw-normal">{{ chal.points }}分</small></th>{% endfor %}
+                    <th class="text-center">总分</th><th class="text-center">通过</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in rankings %}
+                    <tr class="{{ 'rank-1' if loop.index==1 else 'rank-2' if loop.index==2 else 'rank-3' if loop.index==3 else '' }}">
+                        <td class="fw-bold">{{ loop.index }}</td>
+                        <td>{{ row.team_name or '-' }}</td>
+                        <td>{{ row.username }}</td>
+                        {% for chal in challenges %}
+                        <td class="text-center">
+                            {% set ns = namespace(found=false) %}
+                            {% for (uid, cid), s in score_lookup.items() %}
+                                {% if uid == row.id and cid == chal.id and s.passed %}
+                                    <span class="badge bg-success"><i class="bi bi-check-lg"></i> {{ s.score }}</span>
+                                    {% set ns.found = true %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if not ns.found %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center fw-bold">{{ row.total_score }}</td>
+                        <td class="text-center">{{ row.solved_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">暂无成绩数据</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Create Challenge Modal -->
+<div class="modal fade" id="createChallengeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin.create_challenge', comp_id=competition.id) }}">
+                <div class="modal-header"><h5 class="modal-title">添加新题目</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-6"><label class="form-label">题目标题 *</label><input type="text" class="form-control" name="title" required placeholder="例: Nginx服务搭建"></div>
+                        <div class="col-3"><label class="form-label">分数</label><input type="number" class="form-control" name="points" value="100"></div>
+                        <div class="col-3"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="0"></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">题目描述</label><textarea class="form-control" name="description" rows="2" placeholder="选手需要完成的任务说明"></textarea></div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">判题方式</label>
+                            <select class="form-select" name="judge_type">
+                                <option value="port">端口检测</option>
+                                <option value="command">命令执行</option>
+                                <option value="file">文件检测</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">判题配置 (JSON)</label>
+                            <input type="text" class="form-control" name="judge_config" value='{"port": 80}' placeholder='{"port":80} / {"cmd":"..."} / {"path":"..."}'>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">使用模板 (可选)</label>
+                        <select class="form-select" name="template_name">
+                            <option value="">-- 手动编写下方 Dockerfile --</option>
+                            {% for tpl in templates %}
+                            <option value="{{ tpl.name }}">{{ tpl.name }} — {{ tpl.description }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dockerfile</label>
+                        <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8" placeholder="FROM ubuntu:22.04&#10;RUN apt-get update && apt-get install -y nginx&#10;EXPOSE 80&#10;CMD [&quot;/bin/bash&quot;, &quot;-c&quot;, &quot;tail -f /dev/null&quot;]"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">创建并构建镜像</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Challenge Modals -->
+{% for chal in challenges %}
+<div class="modal fade" id="editChalModal{{ chal.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin.edit_challenge', challenge_id=chal.id) }}">
+                <div class="modal-header"><h5 class="modal-title">编辑: {{ chal.title }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-6"><label class="form-label">标题</label><input type="text" class="form-control" name="title" value="{{ chal.title }}" required></div>
+                        <div class="col-3"><label class="form-label">分数</label><input type="number" class="form-control" name="points" value="{{ chal.points }}"></div>
+                        <div class="col-3"><label class="form-label">排序</label><input type="number" class="form-control" name="order" value="{{ chal.order }}"></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea></div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">判题方式</label>
+                            <select class="form-select" name="judge_type">
+                                <option value="port" {{ 'selected' if chal.judge_type=='port' }}>端口检测</option>
+                                <option value="command" {{ 'selected' if chal.judge_type=='command' }}>命令执行</option>
+                                <option value="file" {{ 'selected' if chal.judge_type=='file' }}>文件检测</option>
+                            </select>
+                        </div>
+                        <div class="col-6"><label class="form-label">判题配置 (JSON)</label><input type="text" class="form-control" name="judge_config" value="{{ chal.judge_config }}"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dockerfile (修改后自动重新构建)</label>
+                        <textarea class="form-control dockerfile-editor" name="dockerfile_content" rows="8">{{ chal.dockerfile_content or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const socket = io();
+const deployBtn = document.getElementById('deployBtn');
+const logDiv = document.getElementById('deployLog');
+const logContent = document.getElementById('logContent');
+
+socket.on('deploy_progress', function(data) {
+    logDiv.style.display = 'block';
+    const line = document.createElement('div');
+    const cls = data.message.includes('[失败]')||data.message.includes('[错误]') ? 'error' :
+                data.message.includes('[成功]') ? 'success' : 'info';
+    line.className = cls;
+    line.textContent = `[${data.current}/${data.total}] ${data.message}`;
+    logContent.appendChild(line);
+    logContent.scrollTop = logContent.scrollHeight;
+});
+
+socket.on('deploy_complete', function(data) {
+    const line = document.createElement('div');
+    line.className = data.failed > 0 ? 'warning' : 'success';
+    line.textContent = `========== 完成: 成功 ${data.success}, 失败 ${data.failed} ==========`;
+    logContent.appendChild(line);
+    logContent.scrollTop = logContent.scrollHeight;
+    deployBtn.disabled = false;
+    deployBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+    setTimeout(() => location.reload(), 3000);
+});
+
+async function startDeploy() {
+    deployBtn.disabled = true;
+    deployBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 部署中...';
+    logContent.innerHTML = '';
+    logDiv.style.display = 'block';
+    const startLine = document.createElement('div');
+    startLine.className = 'info';
+    startLine.textContent = '正在启动部署任务...';
+    logContent.appendChild(startLine);
+
+    try {
+        await fetch('{{ url_for("admin.deploy_environments", comp_id=competition.id) }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+    } catch (e) {
+        const line = document.createElement('div');
+        line.className = 'error';
+        line.textContent = `[错误] ${e.message}`;
+        logContent.appendChild(line);
+        deployBtn.disabled = false;
+        deployBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 一键部署';
+    }
+}
+
+// Remember active tab
+const activeTab = sessionStorage.getItem('compActiveTab');
+if (activeTab) {
+    const tab = document.querySelector(`[data-bs-target="${activeTab}"]`);
+    if (tab) new bootstrap.Tab(tab).show();
+}
+document.querySelectorAll('#compTabs button').forEach(btn => {
+    btn.addEventListener('shown.bs.tab', e => sessionStorage.setItem('compActiveTab', e.target.dataset.bsTarget));
+});
+</script>
+{% endblock %}

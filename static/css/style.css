@@ -3,56 +3,76 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-.navbar-brand {
+/* Sidebar Layout */
+.sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 220px;
+    background: #1a1a2e;
+    color: #ccc;
+    z-index: 1000;
+    overflow-y: auto;
+}
+.sidebar .brand {
+    display: block;
+    padding: 18px 20px;
+    font-size: 1.1rem;
     font-weight: 700;
-    letter-spacing: 1px;
+    color: #fff;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar .brand i { color: #0d6efd; margin-right: 6px; }
+.sidebar .nav-link {
+    color: #aaa;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+}
+.sidebar .nav-link:hover, .sidebar .nav-link.active {
+    color: #fff;
+    background: rgba(255,255,255,0.05);
+    border-left-color: #0d6efd;
+}
+.sidebar .nav-link i { width: 20px; margin-right: 8px; text-align: center; }
+.sidebar .user-info {
+    padding: 12px 20px; font-size: 0.8rem; color: #888;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    position: absolute; bottom: 50px; left: 0; right: 0;
+}
+.sidebar .logout-btn {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 10px 20px;
+}
+.main-content {
+    margin-left: 220px;
+    padding: 24px 30px;
+    min-height: 100vh;
 }
 
+/* Cards */
 .card {
     border: none;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     border-radius: 10px;
-    transition: transform 0.2s, box-shadow 0.2s;
 }
-
-.card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
 .stat-card {
     border-left: 4px solid #0d6efd;
+    border-radius: 8px;
 }
-
-.stat-card.success {
-    border-left-color: #198754;
-}
-
-.stat-card.warning {
-    border-left-color: #ffc107;
-}
-
-.stat-card.danger {
-    border-left-color: #dc3545;
-}
-
+.stat-card.success { border-left-color: #198754; }
+.stat-card.warning { border-left-color: #ffc107; }
 .stat-number {
-    font-size: 2.5rem;
+    font-size: 2rem;
     font-weight: 700;
 }
-
 .status-badge {
-    font-size: 0.8rem;
-    padding: 0.25em 0.6em;
+    font-size: 0.78rem;
+    padding: 0.2em 0.55em;
 }
 
-.terminal-container {
-    background: #1a1a2e;
-    border-radius: 8px;
-    padding: 20px;
-    min-height: 400px;
-}
-
+/* Deploy Log */
 .deploy-log {
     background: #1a1a2e;
     color: #0f0;
@@ -61,44 +81,73 @@ body {
     padding: 15px;
     max-height: 400px;
     overflow-y: auto;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
 }
+.deploy-log .error   { color: #f44; }
+.deploy-log .success { color: #0f0; }
+.deploy-log .info    { color: #0af; }
+.deploy-log .warning { color: #fa0; }
 
-.deploy-log .error {
-    color: #f44;
-}
-
-.deploy-log .success {
-    color: #0f0;
-}
-
-.deploy-log .info {
-    color: #0af;
-}
-
+/* Dockerfile Editor */
 .dockerfile-editor {
     font-family: "Courier New", monospace;
     font-size: 0.85rem;
     background: #1e1e1e;
     color: #d4d4d4;
     border: 1px solid #333;
-    min-height: 300px;
+    min-height: 200px;
 }
 
+/* Scoreboard */
 .scoreboard-table th {
     background: #0d6efd;
     color: white;
     vertical-align: middle;
 }
-
 .scoreboard-table .rank-1 { background-color: #fff3cd; }
 .scoreboard-table .rank-2 { background-color: #e2e3e5; }
 .scoreboard-table .rank-3 { background-color: #f8d7da; }
 
-.btn-primary {
+/* Buttons & Modals */
+.btn { border-radius: 6px; }
+.modal-content { border-radius: 12px; }
+
+/* Tab pills */
+.nav-pills .nav-link {
+    color: #666;
     border-radius: 6px;
+    padding: 8px 16px;
+}
+.nav-pills .nav-link.active {
+    background: #0d6efd;
+    color: #fff;
 }
 
-.modal-content {
-    border-radius: 12px;
+/* Step indicator */
+.steps {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+.step {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    border-radius: 8px;
+    background: #e9ecef;
+    font-size: 0.85rem;
+    color: #999;
+}
+.step.active {
+    background: #0d6efd;
+    color: #fff;
+}
+.step.done {
+    background: #198754;
+    color: #fff;
+}
+
+/* Quick action buttons */
+.quick-actions .btn {
+    min-width: 130px;
 }

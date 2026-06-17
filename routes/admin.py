@@ -136,9 +136,9 @@ def delete_competition(comp_id):
     return redirect(url_for("admin.competitions"))
 
 
-@admin_bp.route("/competitions/<int:comp_id>/challenges")
+@admin_bp.route("/competitions/<int:comp_id>")
 @admin_required
-def challenges(comp_id):
+def competition_detail(comp_id):
     comp = db.session.get(Competition, comp_id)
     if not comp:
         flash("竞赛不存在", "error")
@@ -146,8 +146,31 @@ def challenges(comp_id):
 
     challenges_list = Challenge.query.filter_by(competition_id=comp_id).order_by(Challenge.order).all()
     templates = get_available_templates()
-    return render_template("admin/challenges.html", competition=comp,
-                           challenges=challenges_list, templates=templates)
+    envs = get_competition_environments(comp_id)
+
+    from sqlalchemy import func
+    rankings = db.session.query(
+        User.id, User.username, User.team_name,
+        func.coalesce(func.sum(Score.score), 0).label("total_score"),
+        func.count(Score.id).label("solved_count"),
+    ).outerjoin(Score, (Score.user_id == User.id) & (Score.competition_id == comp_id) & (Score.passed == True)) \
+     .filter(User.role == "contestant") \
+     .group_by(User.id).order_by(func.sum(Score.score).desc()).all()
+
+    score_lookup = {}
+    for s in Score.query.filter_by(competition_id=comp_id).all():
+        score_lookup[(s.user_id, s.challenge_id)] = s
+
+    return render_template("admin/competition_detail.html",
+                           competition=comp, challenges=challenges_list,
+                           templates=templates, environments=envs,
+                           rankings=rankings, score_lookup=score_lookup)
+
+
+@admin_bp.route("/competitions/<int:comp_id>/challenges")
+@admin_required
+def challenges(comp_id):
+    return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
 @admin_bp.route("/competitions/<int:comp_id>/challenges/create", methods=["POST"])
@@ -169,7 +192,7 @@ def create_challenge(comp_id):
 
     if not title:
         flash("题目标题不能为空", "error")
-        return redirect(url_for("admin.challenges", comp_id=comp_id))
+        return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
     challenge = Challenge(
         competition_id=comp_id,
@@ -204,7 +227,7 @@ def create_challenge(comp_id):
 
     db.session.commit()
     flash(f"题目「{title}」创建成功", "success")
-    return redirect(url_for("admin.challenges", comp_id=comp_id))
+    return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
 @admin_bp.route("/challenges/<int:challenge_id>/edit", methods=["POST"])
@@ -233,7 +256,7 @@ def edit_challenge(challenge_id):
 
     db.session.commit()
     flash("题目更新成功", "success")
-    return redirect(url_for("admin.challenges", comp_id=challenge.competition_id))
+    return redirect(url_for("admin.competition_detail", comp_id=challenge.competition_id))
 
 
 @admin_bp.route("/challenges/<int:challenge_id>/delete", methods=["POST"])
@@ -248,7 +271,7 @@ def delete_challenge(challenge_id):
     db.session.delete(challenge)
     db.session.commit()
     flash("题目已删除", "success")
-    return redirect(url_for("admin.challenges", comp_id=comp_id))
+    return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
 @admin_bp.route("/competitions/<int:comp_id>/deploy", methods=["POST"])
@@ -268,12 +291,15 @@ def deploy_environments(comp_id):
                 "progress": 0, "total": 0, "current": 0,
                 "message": f"[系统错误] Docker 服务可能未启动: {e}"
             })
+            socketio.emit("deploy_complete", {"success": 0, "failed": 0, "total": 0})
 
     thread = threading.Thread(target=_deploy)
     thread.start()
 
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True, "message": "部署任务已启动"})
     flash("部署任务已启动，请观察下方日志了解进度", "success")
-    return redirect(url_for("admin.environments", comp_id=comp_id))
+    return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
 @admin_bp.route("/competitions/<int:comp_id>/environments")
@@ -308,7 +334,7 @@ def environment_action(env_id, action):
         env.container_id = ""
 
     db.session.commit()
-    return redirect(url_for("admin.environments", comp_id=env.competition_id))
+    return redirect(url_for("admin.competition_detail", comp_id=env.competition_id))
 
 
 @admin_bp.route("/competitions/<int:comp_id>/stop-all", methods=["POST"])
@@ -316,7 +342,7 @@ def environment_action(env_id, action):
 def stop_all(comp_id):
     result = stop_all_environments(comp_id)
     flash(f"已停止 {result['stopped']} 个容器，{result['errors']} 个失败", "success")
-    return redirect(url_for("admin.environments", comp_id=comp_id))
+    return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
 @admin_bp.route("/competitions/<int:comp_id>/remove-all", methods=["POST"])
@@ -324,7 +350,7 @@ def stop_all(comp_id):
 def remove_all(comp_id):
     result = remove_all_environments(comp_id)
     flash(f"已删除 {result['removed']} 个容器", "success")
-    return redirect(url_for("admin.environments", comp_id=comp_id))
+    return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
 @admin_bp.route("/competitions/<int:comp_id>/scores")
@@ -359,6 +385,79 @@ def scores(comp_id):
                            rankings=rankings, score_lookup=score_lookup,
                            challenges=challenges_list)
 
+
+# ── User Management ──
+
+@admin_bp.route("/users")
+@admin_required
+def users():
+    all_users = User.query.order_by(User.id).all()
+    return render_template("admin/users.html", users=all_users)
+
+
+@admin_bp.route("/users/create", methods=["POST"])
+@admin_required
+def create_user():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "player123").strip()
+    team_name = request.form.get("team_name", "").strip()
+
+    if not username:
+        flash("用户名不能为空", "error")
+        return redirect(url_for("admin.users"))
+
+    if User.query.filter_by(username=username).first():
+        flash("用户名已存在", "error")
+        return redirect(url_for("admin.users"))
+
+    import bcrypt
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    user = User(username=username, password_hash=pw_hash, role="contestant", team_name=team_name)
+    db.session.add(user)
+    db.session.commit()
+
+    flash(f"选手账号「{username}」创建成功（密码: {password}）", "success")
+    return redirect(url_for("admin.users"))
+
+
+@admin_bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
+@admin_required
+def reset_password(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("用户不存在", "error")
+        return redirect(url_for("admin.users"))
+    if user.role == "admin":
+        flash("不能重置管理员密码", "error")
+        return redirect(url_for("admin.users"))
+
+    import bcrypt
+    user.password_hash = bcrypt.hashpw("player123".encode(), bcrypt.gensalt()).decode()
+    db.session.commit()
+    flash(f"用户「{user.username}」密码已重置为 player123", "success")
+    return redirect(url_for("admin.users"))
+
+
+@admin_bp.route("/users/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def delete_user(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("用户不存在", "error")
+        return redirect(url_for("admin.users"))
+    if user.role == "admin":
+        flash("不能删除管理员账号", "error")
+        return redirect(url_for("admin.users"))
+
+    Environment.query.filter_by(user_id=user_id).delete()
+    Score.query.filter_by(user_id=user_id).delete()
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"用户「{user.username}」已删除", "success")
+    return redirect(url_for("admin.users"))
+
+
+# ── Logs ──
 
 @admin_bp.route("/logs")
 @admin_required

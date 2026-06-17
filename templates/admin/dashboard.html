@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}管理面板{% endblock %}
+{% block title %}管理仪表盘{% endblock %}
 
 {% block content %}
-<h2 class="mb-4"><i class="bi bi-speedometer2"></i> 管理仪表盘</h2>
+<h4 class="mb-4"><i class="bi bi-speedometer2"></i> 仪表盘</h4>
 
 <div class="row g-4 mb-4">
     <div class="col-md-3">
@@ -13,7 +13,7 @@
     </div>
     <div class="col-md-3">
         <div class="card stat-card success p-3">
-            <div class="text-muted small">进行中竞赛</div>
+            <div class="text-muted small">进行中</div>
             <div class="stat-number">{{ active_count }}</div>
         </div>
     </div>
@@ -25,7 +25,7 @@
     </div>
     <div class="col-md-3">
         <div class="card stat-card p-3">
-            <div class="text-muted small">环境实例 (运行中/总数)</div>
+            <div class="text-muted small">环境实例</div>
             <div class="stat-number">{{ running_count }}<small class="text-muted fs-6"> / {{ env_count }}</small></div>
         </div>
     </div>
@@ -34,27 +34,23 @@
 <div class="row g-4">
     <div class="col-md-6">
         <div class="card p-4">
-            <h5><i class="bi bi-lightning-fill text-warning"></i> 快速操作</h5>
-            <div class="d-grid gap-2 mt-3">
-                <a href="{{ url_for('admin.competitions') }}" class="btn btn-outline-primary">
-                    <i class="bi bi-trophy"></i> 管理竞赛
-                </a>
-                <a href="{{ url_for('admin.competitions') }}" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> 创建新竞赛
-                </a>
+            <h6><i class="bi bi-lightning-fill text-warning"></i> 快速操作</h6>
+            <p class="text-muted small">完整的竞赛管理流程：创建竞赛 → 添加题目 → 构建镜像 → 部署环境 → 查看成绩</p>
+            <div class="d-grid gap-2 quick-actions">
+                <a href="{{ url_for('admin.competitions') }}" class="btn btn-primary"><i class="bi bi-trophy"></i> 竞赛管理</a>
+                <a href="{{ url_for('admin.users') }}" class="btn btn-outline-primary"><i class="bi bi-people"></i> 用户管理</a>
             </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card p-4">
-            <h5><i class="bi bi-info-circle text-info"></i> 使用说明</h5>
-            <ol class="small mt-3">
-                <li>创建竞赛 → 设置时间、资源限制</li>
-                <li>添加题目 → 编写Dockerfile或选择模板</li>
-                <li>构建镜像 → 系统自动build</li>
-                <li>一键部署 → 为所有选手创建容器</li>
-                <li>监控环境 → 查看容器状态</li>
-                <li>查看成绩 → 自动判题评分</li>
+            <h6><i class="bi bi-info-circle text-info"></i> 使用流程</h6>
+            <ol class="small mt-2 mb-0">
+                <li><strong>创建竞赛</strong> — 设置名称、时间、资源限制</li>
+                <li><strong>添加题目</strong> — 编写 Dockerfile 或选择模板，系统自动构建镜像</li>
+                <li><strong>创建选手</strong> — 在用户管理中批量创建测试账号</li>
+                <li><strong>一键部署</strong> — 为所有选手创建独立容器</li>
+                <li><strong>查看成绩</strong> — 自动判题 + 实时排名</li>
             </ol>
         </div>
     </div>

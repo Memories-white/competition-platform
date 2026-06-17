@@ -8,8 +8,18 @@ from docker_engine.builder import get_expose_port_from_dockerfile
 
 def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
     """Deploy containers for all contestants for a competition. Emits progress via socketio."""
+    def emit(msg):
+        if socketio:
+            socketio.emit("deploy_progress", {"progress": 0, "total": 0, "current": 0, "message": msg})
+
+    def emit_done(success, failed):
+        if socketio:
+            socketio.emit("deploy_complete", {"success": success, "failed": failed, "total": success + failed})
+
     competition = db.session.get(Competition, competition_id)
     if not competition:
+        emit("[错误] 竞赛不存在")
+        emit_done(0, 0)
         return {"success": False, "error": "竞赛不存在"}
 
     from models.models import User
@@ -17,8 +27,12 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
     challenges = Challenge.query.filter_by(competition_id=competition_id).all()
 
     if not contestants:
+        emit("[错误] 没有选手可分配，请先注册选手账号")
+        emit_done(0, 0)
         return {"success": False, "error": "没有选手可分配"}
     if not challenges:
+        emit("[错误] 没有题目可部署，请先添加题目并构建镜像")
+        emit_done(0, 0)
         return {"success": False, "error": "没有题目可部署"}
 
     total = len(contestants) * len(challenges)
