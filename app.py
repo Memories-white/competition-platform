@@ -360,50 +360,60 @@ def _start_scheduler(app):
                     })
 
     def auto_image_build_job():
-        """为未构建镜像的 Docker 题目后台构建镜像，通过 SocketIO 推送通知。"""
+        """为未构建镜像的 Docker 题目后台构建镜像，通过 SocketIO 推送通知。
+        每次只构建一个题目（由定时器周期性逐个构建），防止单次构建挂起阻塞调度器。"""
         with app.app_context():
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
             from models.models import Challenge
             from docker_engine.builder import build_challenge_image
-            # 查找所有 docker 类型且尚未构建镜像的题目
-            unbuilt = Challenge.query.filter_by(challenge_type="docker").filter(
+            # 只取第一个未构建的题目，每次调度只构建一个
+            challenge = Challenge.query.filter_by(challenge_type="docker").filter(
                 Challenge.image_tag == ""
-            ).all()
-            for challenge in unbuilt:
-                try:
-                    logger.info(f"Image build: starting for challenge {challenge.id} '{challenge.title}'")
-                    result = build_challenge_image(challenge.id, challenge.dockerfile_content)
-                    if result["success"]:
-                        challenge.image_tag = result["image_tag"]
-                        db.session.commit()
-                        logger.info(f"Image build: success for challenge {challenge.id}, tag={result['image_tag']}")
-                        socketio.emit("image_build_done", {
-                            "challenge_id": challenge.id,
-                            "title": challenge.title,
-                            "success": True,
-                            "image_tag": result["image_tag"],
-                            "error": "",
-                        })
-                    else:
-                        logger.error(f"Image build: failed for challenge {challenge.id}: {result['error']}")
-                        socketio.emit("image_build_done", {
-                            "challenge_id": challenge.id,
-                            "title": challenge.title,
-                            "success": False,
-                            "image_tag": "",
-                            "error": result["error"],
-                        })
-                except Exception as e:
-                    logger.error(f"Image build: exception for challenge {challenge.id}: {e}")
+            ).first()
+            if not challenge:
+                return
+            try:
+                logger.info(f"Image build: starting for challenge {challenge.id} '{challenge.title}'")
+                # 用独立线程执行构建，设置 310 秒超时（比 BUILD_TIMEOUT 多 10 秒容错）
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(build_challenge_image, challenge.id, challenge.dockerfile_content)
                     try:
-                        socketio.emit("image_build_done", {
-                            "challenge_id": challenge.id,
-                            "title": challenge.title,
-                            "success": False,
-                            "image_tag": "",
-                            "error": str(e),
-                        })
-                    except Exception:
-                        pass
+                        result = future.result(timeout=310)
+                    except FuturesTimeout:
+                        logger.error(f"Image build: timeout for challenge {challenge.id}")
+                        result = {"success": False, "image_tag": "", "error": "构建超时（超过5分钟）"}
+                if result["success"]:
+                    challenge.image_tag = result["image_tag"]
+                    db.session.commit()
+                    logger.info(f"Image build: success for challenge {challenge.id}, tag={result['image_tag']}")
+                    socketio.emit("image_build_done", {
+                        "challenge_id": challenge.id,
+                        "title": challenge.title,
+                        "success": True,
+                        "image_tag": result["image_tag"],
+                        "error": "",
+                    })
+                else:
+                    logger.error(f"Image build: failed for challenge {challenge.id}: {result['error']}")
+                    socketio.emit("image_build_done", {
+                        "challenge_id": challenge.id,
+                        "title": challenge.title,
+                        "success": False,
+                        "image_tag": "",
+                        "error": result["error"],
+                    })
+            except Exception as e:
+                logger.error(f"Image build: exception for challenge {challenge.id}: {e}")
+                try:
+                    socketio.emit("image_build_done", {
+                        "challenge_id": challenge.id,
+                        "title": challenge.title,
+                        "success": False,
+                        "image_tag": "",
+                        "error": str(e),
+                    })
+                except Exception:
+                    pass
 
     def auto_cleanup_job():
         """对已结束的竞赛执行自动判题并清理环境。"""
@@ -449,6 +459,7 @@ def _start_scheduler(app):
         seconds=app.config.get("IMAGE_BUILD_INTERVAL_SECONDS", 30),
         id="auto_image_build",
         replace_existing=True,
+        misfire_grace_time=300,  # 允许构建耗时长达 5 分钟不报错
     )
     scheduler.add_job(
         auto_judge_job,

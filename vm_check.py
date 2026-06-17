@@ -1,0 +1,22 @@
+import paramiko, io, sys
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+c = paramiko.SSHClient()
+c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+c.connect('192.168.130.130', username='Memories_white', password='lxw060907', timeout=10)
+def run(cmd):
+    si, so, se = c.exec_command(cmd)
+    return so.read().decode('utf-8',errors='replace') + se.read().decode('utf-8',errors='replace')
+
+print("=== Docker containers (all) ===")
+print(run("docker ps -a --format '{{.Names}} {{.Status}} {{.Image}}'"))
+print()
+print("=== Docker images ===")
+print(run("docker images --format '{{.Repository}}:{{.Tag}}'"))
+print()
+print("=== Python processes ===")
+print(run("tasklist /fi \"imagename eq python.exe\""))
+print()
+print("=== Flask stderr (last 1500) ===")
+log = run("type C:\\Users\\Memories_white\\Downloads\\competition-platform-master\\competition-platform-master\\flask_stderr.log 2>nul")
+print(log[-1500:] if log else "(empty)")
+c.close()

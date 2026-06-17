@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 BUILD_MAX_RETRIES = 2
 BUILD_RETRY_DELAY = 3  # seconds
+BUILD_TIMEOUT = 300     # 单次构建超时（秒），5分钟足够拉取和安装
 
 _client = None
 
@@ -100,6 +101,7 @@ def build_image(challenge_id: int, dockerfile_content: str, max_retries: int = N
                     tag=image_tag,
                     rm=True,
                     forcerm=True,
+                    timeout=BUILD_TIMEOUT,
                 )
                 if attempt > 0:
                     logger.info(f"Build succeeded on retry {attempt} for challenge {challenge_id}")
@@ -156,6 +158,7 @@ def build_image_from_template(template_name: str, challenge_id: int, max_retries
                 tag=image_tag,
                 rm=True,
                 forcerm=True,
+                timeout=BUILD_TIMEOUT,
             )
             if attempt > 0:
                 logger.info(f"Template build succeeded on retry {attempt} for challenge {challenge_id}")
