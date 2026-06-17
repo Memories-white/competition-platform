@@ -329,9 +329,6 @@ def _start_scheduler(app):
                 try:
                     logger.info(f"Auto-build [{comp.name}]: starting automatic deployment...")
                     result = deploy_competition_environments(comp.id, socketio=socketio)
-                    comp.auto_deployed = True
-                    comp.deployed_at = datetime.now(timezone.utc)
-                    db.session.commit()
                     succ = result.get('success', 0)
                     fail = result.get('failed', 0)
                     # 若返回 error 字段说明部署前置条件不满足（无选手/无题目等）
@@ -343,13 +340,26 @@ def _start_scheduler(app):
                             "failed": 0,
                             "error": result["error"],
                         })
-                    else:
-                        logger.info(f"Auto-build [{comp.name}]: success={succ}, failed={fail}")
+                        # 不设 auto_deployed，等条件满足后重试
+                    elif fail > 0:
+                        # 部分失败（如镜像未构建），标记未完成等下次重试
+                        logger.info(f"Auto-build [{comp.name}]: success={succ}, failed={fail} (will retry)")
                         socketio.emit("auto_deploy_done", {
                             "competition": comp.name,
                             "success": succ,
                             "failed": fail,
                         })
+                    else:
+                        # 全部成功，标记部署完成
+                        comp.auto_deployed = True
+                        comp.deployed_at = datetime.now(timezone.utc)
+                        logger.info(f"Auto-build [{comp.name}]: all {succ} environments deployed successfully")
+                        socketio.emit("auto_deploy_done", {
+                            "competition": comp.name,
+                            "success": succ,
+                            "failed": fail,
+                        })
+                    db.session.commit()
                 except Exception as e:
                     logger.error(f"Auto-build error [{comp.name}]: {e}")
                     socketio.emit("auto_deploy_done", {
