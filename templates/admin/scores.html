@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ competition.name }} - 成绩管理{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('admin.competitions') }}" class="text-decoration-none">&larr; 返回竞赛列表</a>
+    <h2 class="mt-1"><i class="bi bi-bar-chart"></i> {{ competition.name }} - 成绩与排名</h2>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover scoreboard-table">
+        <thead>
+            <tr>
+                <th>排名</th>
+                <th>队伍</th>
+                <th>选手</th>
+                {% for chal in challenges %}
+                <th class="text-center">{{ chal.title }}<br><small class="fw-normal">{{ chal.points }}分</small></th>
+                {% endfor %}
+                <th class="text-center">总分</th>
+                <th class="text-center">通过数</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rankings %}
+            <tr class="{{ 'rank-1' if loop.index==1 else 'rank-2' if loop.index==2 else 'rank-3' if loop.index==3 else '' }}">
+                <td class="fw-bold">{{ loop.index }}</td>
+                <td>{{ row.team_name or '-' }}</td>
+                <td>{{ row.username }}</td>
+                {% for chal in challenges %}
+                <td class="text-center">
+                    {% set ns = namespace(found=false) %}
+                    {% for (uid, cid), s in score_lookup.items() %}
+                        {% if uid == row.id and cid == chal.id and s.passed %}
+                            <span class="badge bg-success"><i class="bi bi-check-lg"></i> {{ s.score }}</span>
+                            {% set ns.found = true %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if not ns.found %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                {% endfor %}
+                <td class="text-center fw-bold">{{ row.total_score }}</td>
+                <td class="text-center">{{ row.solved_count }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ 4 + challenges|length }}" class="text-center text-muted py-5">
+                    暂无数据
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

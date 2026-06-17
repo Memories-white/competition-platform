@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}{{ challenge.title }} - 竞赛环境{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('contestant.dashboard') }}" class="text-decoration-none">&larr; 返回控制台</a>
+    <h2 class="mt-1"><i class="bi bi-terminal"></i> {{ challenge.title }}</h2>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-8">
+        <!-- Challenge Description -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> 题目说明</h5>
+            </div>
+            <div class="card-body">
+                <p>{{ challenge.description or '暂无详细说明' }}</p>
+                <hr>
+                <div class="row small text-muted">
+                    <div class="col-4">
+                        <strong>题目分值:</strong> {{ challenge.points }}分
+                    </div>
+                    <div class="col-4">
+                        <strong>判题方式:</strong>
+                        {{ {'port':'端口检测','command':'命令执行','file':'文件检测'}.get(challenge.judge_type, challenge.judge_type) }}
+                    </div>
+                    <div class="col-4">
+                        <strong>状态:</strong>
+                        <span class="status-badge badge bg-{{ 'success' if env.status=='running' else 'warning' }}">
+                            {{ {'running':'运行中','stopped':'已停止','pending':'等待中'}.get(env.status, env.status) }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Access -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-terminal-fill"></i> 容器访问</h5>
+                {% if status and status.status == 'running' %}
+                <span class="badge bg-success">容器运行中</span>
+                {% else %}
+                <span class="badge bg-danger">容器未运行</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="terminal-container mb-3" id="terminalInfo">
+                    <p class="text-light mb-2"><i class="bi bi-info-circle"></i> 容器连接信息</p>
+                    <div class="text-muted small">
+                        <p><strong>容器名称:</strong> <code>{{ env.container_name }}</code></p>
+                        <p><strong>宿主机端口:</strong> <code>{{ env.host_port }}</code></p>
+                        <p><strong>容器ID:</strong> <code>{{ env.container_id[:24] if env.container_id else '-' }}...</code></p>
+                    </div>
+                    <div class="alert alert-info small mt-3 mb-0">
+                        <i class="bi bi-lightbulb"></i>
+                        <strong>如何操作？</strong><br>
+                        您可以通过以下方式连接到容器环境:<br>
+                        <code>docker exec -it {{ env.container_name }} bash</code><br>
+                        或通过SSH: <code>ssh root@localhost -p {{ env.host_port }}</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Submit Judge -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-check2-circle"></i> 提交判题</h5>
+            </div>
+            <div class="card-body">
+                {% if score and score.passed %}
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle-fill"></i> <strong>已通过!</strong><br>
+                    得分: {{ score.score }}分<br>
+                    <small>判题时间: {{ score.judged_at.strftime('%Y-%m-%d %H:%M:%S') if score.judged_at else '-' }}</small>
+                </div>
+                {% else %}
+                <p class="text-muted small">完成任务后，点击下方按钮提交判题</p>
+                {% endif %}
+                <button class="btn btn-success w-100" id="submitJudgeBtn"
+                        onclick="submitJudge({{ env.id }})"
+                        {{ 'disabled' if env.status != 'running' }}>
+                    <i class="bi bi-send"></i>
+                    {% if score and score.passed %}重新判题{% else %}提交判题{% endif %}
+                </button>
+                <div id="judgeResult" class="mt-3" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Environment Info -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> 环境信息</h5>
+            </div>
+            <div class="card-body small">
+                <p><strong>竞赛:</strong> {{ env.competition.name if env.competition else '-' }}</p>
+                <p><strong>容器ID:</strong> <code>{{ env.container_id[:12] if env.container_id else '-' }}</code></p>
+                <p><strong>端口映射:</strong> {{ env.host_port or '-' }}</p>
+                <p><strong>创建时间:</strong> {{ env.created_at.strftime('%Y-%m-%d %H:%M') if env.created_at else '-' }}</p>
+                {% if status %}
+                <p><strong>Docker状态:</strong> {{ status.status }}</p>
+                <p><strong>镜像:</strong> <code>{{ status.image }}</code></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function submitJudge(envId) {
+    const btn = document.getElementById('submitJudgeBtn');
+    const resultDiv = document.getElementById('judgeResult');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 判题中...';
+
+    try {
+        const resp = await fetch(`/contestant/environment/${envId}/submit`, { method: 'POST' });
+        const data = await resp.json();
+
+        resultDiv.style.display = 'block';
+        if (data.success && data.passed) {
+            resultDiv.innerHTML = `<div class="alert alert-success">
+                <i class="bi bi-check-circle-fill"></i> <strong>通过！</strong> 得分: ${data.score}分</div>`;
+            setTimeout(() => location.reload(), 1500);
+        } else if (data.success) {
+            resultDiv.innerHTML = `<div class="alert alert-warning">
+                <i class="bi bi-exclamation-circle-fill"></i> 未通过，请检查任务是否完成</div>`;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">
+                <i class="bi bi-x-circle-fill"></i> 判题失败: ${data.error || '未知错误'}</div>`;
+        }
+    } catch (e) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `<div class="alert alert-danger">请求失败: ${e.message}</div>`;
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-send"></i> 重新判题';
+}
+</script>
+{% endblock %}

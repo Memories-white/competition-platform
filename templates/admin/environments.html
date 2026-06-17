@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ competition.name }} - 环境管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('admin.competitions') }}" class="text-decoration-none">&larr; 返回竞赛列表</a>
+        <h2 class="mt-1"><i class="bi bi-hdd-stack"></i> {{ competition.name }} - 环境管理</h2>
+    </div>
+    <div>
+        <form method="POST" action="{{ url_for('admin.deploy_environments', comp_id=competition.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-success" id="deployBtn">
+                <i class="bi bi-rocket-takeoff"></i> 一键部署
+            </button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.stop_all', comp_id=competition.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-warning">
+                <i class="bi bi-stop-circle"></i> 全部停止
+            </button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.remove_all', comp_id=competition.id) }}" class="d-inline"
+              onsubmit="return confirm('确定删除此竞赛的所有环境容器？此操作不可撤销。')">
+            <button type="submit" class="btn btn-danger">
+                <i class="bi bi-trash"></i> 全部删除
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Deploy Log -->
+<div class="deploy-log mb-4" id="deployLog" style="display:none;">
+    <div class="d-flex justify-content-between mb-2">
+        <strong>部署日志</strong>
+        <button class="btn btn-sm btn-outline-light" onclick="document.getElementById('deployLog').style.display='none'">关闭</button>
+    </div>
+    <div id="logContent"></div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>选手</th>
+                <th>队伍</th>
+                <th>题目</th>
+                <th>容器名</th>
+                <th>端口</th>
+                <th>Docker状态</th>
+                <th>平台状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for env in environments %}
+            <tr>
+                <td>{{ env.username }}</td>
+                <td>{{ env.team_name }}</td>
+                <td>{{ env.challenge_title }}</td>
+                <td><code>{{ env.container_name }}</code></td>
+                <td>{{ env.host_port or '-' }}</td>
+                <td>
+                    <span class="status-badge badge bg-{{ 'success' if env.docker_status=='running' else 'secondary' }}">
+                        {{ env.docker_status or '-' }}
+                    </span>
+                </td>
+                <td>
+                    <span class="status-badge badge bg-{{ 'success' if env.status=='running' else 'warning' if env.status=='stopped' else 'secondary' }}">
+                        {{ {'running':'运行中','stopped':'已停止','pending':'等待中','error':'错误','removed':'已删除'}.get(env.status, env.status) }}
+                    </span>
+                </td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='start') }}" class="d-inline">
+                        <button class="btn btn-success btn-sm" title="启动"><i class="bi bi-play-fill"></i></button>
+                    </form>
+                    <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='stop') }}" class="d-inline">
+                        <button class="btn btn-warning btn-sm" title="停止"><i class="bi bi-stop-fill"></i></button>
+                    </form>
+                    <form method="POST" action="{{ url_for('admin.environment_action', env_id=env.id, action='remove') }}" class="d-inline"
+                          onsubmit="return confirm('确定删除此容器？')">
+                        <button class="btn btn-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 2rem; display: block;"></i>
+                    暂无环境实例。请先创建题目并构建镜像，然后点击"一键部署"
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const socket = io();
+
+socket.on('deploy_progress', function(data) {
+    const logDiv = document.getElementById('deployLog');
+    const logContent = document.getElementById('logContent');
+    logDiv.style.display = 'block';
+
+    const line = document.createElement('div');
+    const cls = data.message.includes('[失败]') ? 'error' :
+                data.message.includes('[成功]') ? 'success' : 'info';
+    line.className = cls;
+    line.textContent = `[${data.current}/${data.total}] ${data.message}`;
+    logContent.appendChild(line);
+    logDiv.scrollTop = logDiv.scrollHeight;
+});
+
+socket.on('deploy_complete', function(data) {
+    const logContent = document.getElementById('logContent');
+    const line = document.createElement('div');
+    line.className = 'success';
+    line.textContent = `========== 部署完成: 成功 ${data.success}, 失败 ${data.failed} ==========`;
+    logContent.appendChild(line);
+    setTimeout(() => location.reload(), 2000);
+});
+</script>
+{% endblock %}

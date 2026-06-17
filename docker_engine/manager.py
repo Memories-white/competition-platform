@@ -1,0 +1,186 @@
+import random
+import logging
+import docker
+from config import Config
+
+logger = logging.getLogger(__name__)
+
+_client = None
+_network_created = False
+
+
+def get_client():
+    global _client
+    if _client is None:
+        try:
+            _client = docker.from_env()
+        except Exception as e:
+            logger.error(f"Failed to connect to Docker: {e}")
+            raise
+    return _client
+
+
+def _ensure_network():
+    global _network_created
+    if _network_created:
+        return
+    try:
+        client = get_client()
+        try:
+            client.networks.get(Config.CONTAINER_NETWORK)
+        except docker.errors.NotFound:
+            client.networks.create(Config.CONTAINER_NETWORK, driver="bridge")
+        _network_created = True
+    except Exception as e:
+        logger.warning(f"Failed to ensure network: {e}")
+
+
+def get_free_port(start=30000, end=40000) -> int:
+    try:
+        client = get_client()
+        used_ports = set()
+        for container in client.containers.list(all=True):
+            ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+            if ports:
+                for mappings in ports.values():
+                    if mappings:
+                        for m in mappings:
+                            if "HostPort" in m:
+                                used_ports.add(int(m["HostPort"]))
+        for port in range(start, end):
+            if port not in used_ports:
+                return port
+    except Exception:
+        pass
+    return random.randint(start, end)
+
+
+def create_container(image_tag: str, container_name: str, cpu_limit: float = 0.5,
+                     mem_limit: str = "512m", expose_port: int = 80) -> dict:
+    _ensure_network()
+    host_port = get_free_port()
+    try:
+        client = get_client()
+        container = client.containers.run(
+            image=image_tag,
+            name=container_name,
+            detach=True,
+            ports={f"{expose_port}/tcp": host_port},
+            network=Config.CONTAINER_NETWORK,
+            nano_cpus=int(cpu_limit * 1e9),
+            mem_limit=mem_limit,
+            memswap_limit=mem_limit,
+            restart_policy={"Name": "no"},
+            stdin_open=True,
+            tty=True,
+        )
+        return {
+            "success": True,
+            "container_id": container.id,
+            "container_name": container_name,
+            "host_port": host_port,
+            "status": container.status,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def start_container(container_id: str) -> bool:
+    try:
+        client = get_client()
+        c = client.containers.get(container_id)
+        c.start()
+        return True
+    except Exception:
+        return False
+
+
+def stop_container(container_id: str) -> bool:
+    try:
+        client = get_client()
+        c = client.containers.get(container_id)
+        c.stop(timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+def remove_container(container_id: str) -> bool:
+    try:
+        client = get_client()
+        c = client.containers.get(container_id)
+        c.remove(force=True)
+        return True
+    except Exception:
+        return False
+
+
+def get_container_status(container_id: str) -> dict | None:
+    try:
+        client = get_client()
+        c = client.containers.get(container_id)
+        return {
+            "id": c.id,
+            "name": c.name,
+            "status": c.status,
+            "image": c.image.tags[0] if c.image.tags else "",
+            "created": c.attrs.get("Created", ""),
+        }
+    except docker.errors.NotFound:
+        return None
+    except Exception:
+        return None
+
+
+def get_container_logs(container_id: str, tail: int = 100) -> str:
+    try:
+        client = get_client()
+        c = client.containers.get(container_id)
+        return c.logs(tail=tail).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def exec_in_container(container_id: str, command: str) -> tuple:
+    try:
+        client = get_client()
+        c = client.containers.get(container_id)
+        if c.status != "running":
+            return -1, "container not running"
+        result = c.exec_run(command, tty=False)
+        output = result.output.decode("utf-8", errors="replace").strip()
+        return result.exit_code, output
+    except docker.errors.NotFound:
+        return -1, "container not found"
+    except Exception as e:
+        return -1, str(e)
+
+
+def check_port_in_container(container_id: str, port: int) -> bool:
+    exit_code, _ = exec_in_container(
+        container_id,
+        f"bash -c 'ss -tlnp 2>/dev/null | grep -q \":{port} \" || netstat -tlnp 2>/dev/null | grep -q \":{port} \"'"
+    )
+    return exit_code == 0
+
+
+def check_file_in_container(container_id: str, path: str) -> bool:
+    exit_code, _ = exec_in_container(container_id, f"test -f {path}")
+    return exit_code == 0
+
+
+def list_all_containers() -> list:
+    try:
+        client = get_client()
+        containers = []
+        for c in client.containers.list(all=True):
+            if c.name.startswith("comp-"):
+                containers.append({
+                    "id": c.id,
+                    "name": c.name,
+                    "status": c.status,
+                    "image": c.image.tags[0] if c.image.tags else "",
+                })
+        return containers
+    except Exception:
+        return []

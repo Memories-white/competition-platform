@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}{{ competition.name }} - 题目管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('admin.competitions') }}" class="text-decoration-none">&larr; 返回竞赛列表</a>
+        <h2 class="mt-1"><i class="bi bi-list-check"></i> {{ competition.name }} - 题目管理</h2>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createChallengeModal">
+        <i class="bi bi-plus-lg"></i> 添加题目
+    </button>
+</div>
+
+<div class="row g-4">
+    {% for chal in challenges %}
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <h5 class="card-title">#{{ chal.order }} {{ chal.title }}</h5>
+                    <span class="badge bg-primary">{{ chal.points }}分</span>
+                </div>
+                <p class="text-muted small">{{ chal.description or '暂无描述' }}</p>
+                <div class="small mb-2">
+                    <span class="text-muted">判题方式: </span>
+                    <span class="badge bg-secondary">{{ {'port':'端口检测','command':'命令执行','file':'文件检测'}.get(chal.judge_type, chal.judge_type) }}</span>
+                    <span class="text-muted ms-3">镜像: </span>
+                    {% if chal.image_tag %}
+                    <span class="badge bg-success">已构建</span>
+                    <code class="small">{{ chal.image_tag }}</code>
+                    {% else %}
+                    <span class="badge bg-warning">未构建</span>
+                    {% endif %}
+                </div>
+                <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal"
+                        data-bs-target="#editChallengeModal{{ chal.id }}">
+                    <i class="bi bi-pencil"></i> 编辑
+                </button>
+                <form method="POST" action="{{ url_for('admin.delete_challenge', challenge_id=chal.id) }}"
+                      onsubmit="return confirm('确定删除此题目？')" class="d-inline">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-trash"></i> 删除
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Challenge Modal -->
+    <div class="modal fade" id="editChallengeModal{{ chal.id }}" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="POST" action="{{ url_for('admin.edit_challenge', challenge_id=chal.id) }}">
+                    <div class="modal-header">
+                        <h5 class="modal-title">编辑题目: {{ chal.title }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-3">
+                            <div class="col-8">
+                                <label class="form-label">标题</label>
+                                <input type="text" class="form-control" name="title" value="{{ chal.title }}" required>
+                            </div>
+                            <div class="col-2">
+                                <label class="form-label">分数</label>
+                                <input type="number" class="form-control" name="points" value="{{ chal.points }}">
+                            </div>
+                            <div class="col-2">
+                                <label class="form-label">排序</label>
+                                <input type="number" class="form-control" name="order" value="{{ chal.order }}">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">描述</label>
+                            <textarea class="form-control" name="description" rows="2">{{ chal.description or '' }}</textarea>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label">判题方式</label>
+                                <select class="form-select" name="judge_type">
+                                    <option value="port" {{ 'selected' if chal.judge_type=='port' }}>端口检测</option>
+                                    <option value="command" {{ 'selected' if chal.judge_type=='command' }}>命令执行</option>
+                                    <option value="file" {{ 'selected' if chal.judge_type=='file' }}>文件检测</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">判题配置 (JSON)</label>
+                                <input type="text" class="form-control" name="judge_config" value="{{ chal.judge_config }}"
+                                       placeholder='{"port":80} 或 {"cmd":"curl localhost"} 或 {"path":"/etc/nginx/nginx.conf"}'>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Dockerfile内容 (修改后会自动重新构建镜像)</label>
+                            <textarea class="form-control dockerfile-editor" name="dockerfile_content"
+                                      rows="8" style="font-family:monospace;">{{ chal.dockerfile_content or '' }}</textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">保存修改</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="card p-5 text-center text-muted">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <p class="mt-3">暂无题目，点击右上角按钮添加第一个题目</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Create Challenge Modal -->
+<div class="modal fade" id="createChallengeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin.create_challenge', comp_id=competition.id) }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加新题目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-8">
+                            <label class="form-label">题目标题 *</label>
+                            <input type="text" class="form-control" name="title" required
+                                   placeholder="例如: Nginx服务搭建">
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label">分数</label>
+                            <input type="number" class="form-control" name="points" value="100">
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label">排序</label>
+                            <input type="number" class="form-control" name="order" value="0">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">题目描述</label>
+                        <textarea class="form-control" name="description" rows="2"
+                                  placeholder="描述选手需要完成的任务"></textarea>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">判题方式</label>
+                            <select class="form-select" name="judge_type">
+                                <option value="port">端口检测 (检查指定端口是否监听)</option>
+                                <option value="command">命令执行 (执行验证命令检查输出)</option>
+                                <option value="file">文件检测 (检查指定文件是否存在)</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">判题配置 (JSON)</label>
+                            <input type="text" class="form-control" name="judge_config" value='{"port": 80}'
+                                   placeholder='{"port":80} 或 {"cmd":"curl localhost"} 或 {"path":"/etc/config"}'>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">使用内置模板 (可选，将自动填充Dockerfile)</label>
+                        <select class="form-select" name="template_name" id="templateSelect">
+                            <option value="">-- 手动编写Dockerfile --</option>
+                            {% for tpl in templates %}
+                            <option value="{{ tpl.name }}">{{ tpl.name }} - {{ tpl.description }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dockerfile内容 (选择模板后自动填充)</label>
+                        <textarea class="form-control dockerfile-editor" name="dockerfile_content"
+                                  id="dockerfileContent" rows="10" style="font-family:monospace;"
+                                  placeholder="FROM ubuntu:22.04&#10;RUN apt-get update && apt-get install -y nginx&#10;EXPOSE 80&#10;CMD [&quot;/bin/bash&quot;, &quot;-c&quot;, &quot;tail -f /dev/null&quot;]"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">创建并构建镜像</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Load template Dockerfile content when a template is selected
+document.getElementById('templateSelect').addEventListener('change', function() {
+    const templateName = this.value;
+    if (!templateName) return;
+    // The template content is pre-loaded; we do a quick fetch
+    fetch('/admin/competitions/{{ competition.id }}/challenges')
+        .then(() => {}) // page already has templates data
+    // For simplicity, we submit the form with the template name and backend fills it
+});
+</script>
+{% endblock %}

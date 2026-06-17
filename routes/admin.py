@@ -1,0 +1,376 @@
+import json
+import threading
+from datetime import datetime
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+from functools import wraps
+from models import db
+from models.models import Competition, Challenge, Environment, Score, User
+from docker_engine.builder import build_image, build_image_from_template, get_image_info, get_available_templates
+from docker_engine.manager import get_container_status, start_container, stop_container, remove_container
+from services.environment_service import (
+    deploy_competition_environments,
+    stop_all_environments,
+    remove_all_environments,
+    get_competition_environments,
+)
+
+admin_bp = Blueprint("admin", __name__)
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get("role") != "admin":
+            flash("需要管理员权限", "error")
+            return redirect(url_for("auth.login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@admin_bp.route("/")
+@admin_required
+def dashboard():
+    comp_count = Competition.query.count()
+    active_count = Competition.query.filter_by(status="active").count()
+    user_count = User.query.filter_by(role="contestant").count()
+    env_count = Environment.query.count()
+    running_count = Environment.query.filter_by(status="running").count()
+
+    return render_template("admin/dashboard.html",
+                           comp_count=comp_count, active_count=active_count,
+                           user_count=user_count, env_count=env_count,
+                           running_count=running_count)
+
+
+@admin_bp.route("/competitions")
+@admin_required
+def competitions():
+    comps = Competition.query.order_by(Competition.created_at.desc()).all()
+    return render_template("admin/competitions.html", competitions=comps)
+
+
+@admin_bp.route("/competitions/create", methods=["POST"])
+@admin_required
+def create_competition():
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip()
+    start_time = request.form.get("start_time", "")
+    end_time = request.form.get("end_time", "")
+    cpu_limit = request.form.get("cpu_limit", 0.5)
+    mem_limit = request.form.get("mem_limit", "512m")
+
+    if not name:
+        flash("竞赛名称不能为空", "error")
+        return redirect(url_for("admin.competitions"))
+
+    try:
+        comp = Competition(
+            name=name,
+            description=description,
+            start_time=datetime.fromisoformat(start_time) if start_time else datetime.now(),
+            end_time=datetime.fromisoformat(end_time) if end_time else datetime.now(),
+            cpu_limit=float(cpu_limit),
+            mem_limit=mem_limit,
+        )
+        db.session.add(comp)
+        db.session.commit()
+        flash("竞赛创建成功", "success")
+    except Exception as e:
+        flash(f"创建失败: {e}", "error")
+
+    return redirect(url_for("admin.competitions"))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/edit", methods=["POST"])
+@admin_required
+def edit_competition(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    comp.name = request.form.get("name", comp.name).strip()
+    comp.description = request.form.get("description", comp.description).strip()
+    start_time = request.form.get("start_time", "")
+    end_time = request.form.get("end_time", "")
+    if start_time:
+        comp.start_time = datetime.fromisoformat(start_time)
+    if end_time:
+        comp.end_time = datetime.fromisoformat(end_time)
+    comp.cpu_limit = float(request.form.get("cpu_limit", comp.cpu_limit))
+    comp.mem_limit = request.form.get("mem_limit", comp.mem_limit)
+
+    db.session.commit()
+    flash("竞赛更新成功", "success")
+    return redirect(url_for("admin.competitions"))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/status", methods=["POST"])
+@admin_required
+def update_competition_status(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    new_status = request.form.get("status", "")
+    if new_status in ("draft", "active", "finished"):
+        comp.status = new_status
+        db.session.commit()
+        flash(f"竞赛状态已更新为: {new_status}", "success")
+    return redirect(url_for("admin.competitions"))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/delete", methods=["POST"])
+@admin_required
+def delete_competition(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    remove_all_environments(comp_id)
+    db.session.delete(comp)
+    db.session.commit()
+    flash("竞赛已删除", "success")
+    return redirect(url_for("admin.competitions"))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/challenges")
+@admin_required
+def challenges(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    challenges_list = Challenge.query.filter_by(competition_id=comp_id).order_by(Challenge.order).all()
+    templates = get_available_templates()
+    return render_template("admin/challenges.html", competition=comp,
+                           challenges=challenges_list, templates=templates)
+
+
+@admin_bp.route("/competitions/<int:comp_id>/challenges/create", methods=["POST"])
+@admin_required
+def create_challenge(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    title = request.form.get("title", "").strip()
+    description = request.form.get("description", "").strip()
+    dockerfile_content = request.form.get("dockerfile_content", "").strip()
+    template_name = request.form.get("template_name", "").strip()
+    judge_type = request.form.get("judge_type", "port")
+    judge_config = request.form.get("judge_config", "{}").strip()
+    points = int(request.form.get("points", 100))
+    order = int(request.form.get("order", 0))
+
+    if not title:
+        flash("题目标题不能为空", "error")
+        return redirect(url_for("admin.challenges", comp_id=comp_id))
+
+    challenge = Challenge(
+        competition_id=comp_id,
+        title=title,
+        description=description,
+        dockerfile_content=dockerfile_content,
+        judge_type=judge_type,
+        judge_config=judge_config,
+        points=points,
+        order=order,
+    )
+    db.session.add(challenge)
+    db.session.flush()
+
+    if template_name and not dockerfile_content:
+        success, msg = build_image_from_template(template_name, challenge.id)
+        if success:
+            challenge.image_tag = msg
+            import os
+            from config import Config
+            tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
+            with open(tpl_path) as f:
+                challenge.dockerfile_content = f.read()
+        else:
+            flash(f"镜像构建失败: {msg}", "error")
+    elif dockerfile_content:
+        success, msg = build_image(challenge.id, dockerfile_content)
+        if success:
+            challenge.image_tag = msg
+        else:
+            flash(f"镜像构建失败: {msg}", "error")
+
+    db.session.commit()
+    flash(f"题目「{title}」创建成功", "success")
+    return redirect(url_for("admin.challenges", comp_id=comp_id))
+
+
+@admin_bp.route("/challenges/<int:challenge_id>/edit", methods=["POST"])
+@admin_required
+def edit_challenge(challenge_id):
+    challenge = db.session.get(Challenge, challenge_id)
+    if not challenge:
+        flash("题目不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    challenge.title = request.form.get("title", challenge.title).strip()
+    challenge.description = request.form.get("description", challenge.description).strip()
+    challenge.judge_type = request.form.get("judge_type", challenge.judge_type)
+    challenge.judge_config = request.form.get("judge_config", challenge.judge_config)
+    challenge.points = int(request.form.get("points", challenge.points))
+    challenge.order = int(request.form.get("order", challenge.order))
+
+    new_dockerfile = request.form.get("dockerfile_content", "").strip()
+    if new_dockerfile and new_dockerfile != challenge.dockerfile_content:
+        challenge.dockerfile_content = new_dockerfile
+        success, msg = build_image(challenge.id, new_dockerfile)
+        if success:
+            challenge.image_tag = msg
+        else:
+            flash(f"镜像构建失败: {msg}", "error")
+
+    db.session.commit()
+    flash("题目更新成功", "success")
+    return redirect(url_for("admin.challenges", comp_id=challenge.competition_id))
+
+
+@admin_bp.route("/challenges/<int:challenge_id>/delete", methods=["POST"])
+@admin_required
+def delete_challenge(challenge_id):
+    challenge = db.session.get(Challenge, challenge_id)
+    if not challenge:
+        flash("题目不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    comp_id = challenge.competition_id
+    db.session.delete(challenge)
+    db.session.commit()
+    flash("题目已删除", "success")
+    return redirect(url_for("admin.challenges", comp_id=comp_id))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/deploy", methods=["POST"])
+@admin_required
+def deploy_environments(comp_id):
+    from app import socketio
+    from flask import current_app
+
+    app = current_app._get_current_object()
+
+    def _deploy():
+        try:
+            with app.app_context():
+                deploy_competition_environments(comp_id, socketio=socketio)
+        except Exception as e:
+            socketio.emit("deploy_progress", {
+                "progress": 0, "total": 0, "current": 0,
+                "message": f"[系统错误] Docker 服务可能未启动: {e}"
+            })
+
+    thread = threading.Thread(target=_deploy)
+    thread.start()
+
+    flash("部署任务已启动，请观察下方日志了解进度", "success")
+    return redirect(url_for("admin.environments", comp_id=comp_id))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/environments")
+@admin_required
+def environments(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    envs = get_competition_environments(comp_id)
+    return render_template("admin/environments.html", competition=comp, environments=envs)
+
+
+@admin_bp.route("/environments/<int:env_id>/action/<action>", methods=["POST"])
+@admin_required
+def environment_action(env_id, action):
+    env = db.session.get(Environment, env_id)
+    if not env:
+        flash("环境不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    if action == "start":
+        start_container(env.container_id)
+        env.status = "running"
+    elif action == "stop":
+        stop_container(env.container_id)
+        env.status = "stopped"
+    elif action == "remove":
+        remove_container(env.container_id)
+        env.status = "removed"
+        env.container_id = ""
+
+    db.session.commit()
+    return redirect(url_for("admin.environments", comp_id=env.competition_id))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/stop-all", methods=["POST"])
+@admin_required
+def stop_all(comp_id):
+    result = stop_all_environments(comp_id)
+    flash(f"已停止 {result['stopped']} 个容器，{result['errors']} 个失败", "success")
+    return redirect(url_for("admin.environments", comp_id=comp_id))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/remove-all", methods=["POST"])
+@admin_required
+def remove_all(comp_id):
+    result = remove_all_environments(comp_id)
+    flash(f"已删除 {result['removed']} 个容器", "success")
+    return redirect(url_for("admin.environments", comp_id=comp_id))
+
+
+@admin_bp.route("/competitions/<int:comp_id>/scores")
+@admin_required
+def scores(comp_id):
+    comp = db.session.get(Competition, comp_id)
+    if not comp:
+        flash("竞赛不存在", "error")
+        return redirect(url_for("admin.competitions"))
+
+    from sqlalchemy import func
+    rankings = db.session.query(
+        User.id,
+        User.username,
+        User.team_name,
+        func.coalesce(func.sum(Score.score), 0).label("total_score"),
+        func.count(Score.id).label("solved_count"),
+    ).outerjoin(Score, (Score.user_id == User.id) & (Score.competition_id == comp_id) & (Score.passed == True)) \
+     .filter(User.role == "contestant") \
+     .group_by(User.id) \
+     .order_by(func.sum(Score.score).desc()) \
+     .all()
+
+    challenges_list = Challenge.query.filter_by(competition_id=comp_id).order_by(Challenge.order).all()
+
+    # Build a lookup: (user_id, challenge_id) -> Score
+    score_lookup = {}
+    for s in Score.query.filter_by(competition_id=comp_id).all():
+        score_lookup[(s.user_id, s.challenge_id)] = s
+
+    return render_template("admin/scores.html", competition=comp,
+                           rankings=rankings, score_lookup=score_lookup,
+                           challenges=challenges_list)
+
+
+@admin_bp.route("/logs")
+@admin_required
+def logs():
+    return render_template("admin/logs.html")
+
+
+@admin_bp.route("/logs/data")
+@admin_required
+def logs_data():
+    from app import get_logs
+    level = request.args.get("level", "").strip()
+    limit = int(request.args.get("limit", 200))
+    logs_list = get_logs(limit=limit, level=level or None)
+    return jsonify({"logs": logs_list})
