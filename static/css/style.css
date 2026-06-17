@@ -421,6 +421,16 @@ body {
     50% { opacity: .3; }
 }
 
+/* ── Collapse & Form Switch ── */
+[data-bs-toggle="collapse"][aria-expanded="true"] .collapse-icon {
+    transform: rotate(180deg);
+}
+.collapse-icon { transition: transform var(--t-fast); }
+.form-switch .form-check-input {
+    width: 2.5em; height: 1.4em;
+    cursor: pointer;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .sidebar { width: 56px; }
