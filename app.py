@@ -3,7 +3,7 @@ import logging
 from collections import deque
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
-from flask import Flask, redirect, url_for, session, request, jsonify, render_template, flash
+from flask import Flask, redirect, url_for, session, request, jsonify, render_template, flash, Response
 from flask_socketio import SocketIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
@@ -159,19 +159,44 @@ def create_app():
                 return _json.dumps({"ok": False, "msg": str(e)[:200]})
 
         if action == "build_presets":
-            from docker_engine.builder import build_challenge_image
-            from data.presets import PRESETS
-            results = []
-            for p in PRESETS:
+            # SSE 流式返回构建进度
+            def generate():
+                from data.presets import PRESETS
+                import docker as _docker
+                yield "data: " + _json.dumps({"type": "start", "total": len(PRESETS)}, ensure_ascii=False) + "\n\n"
+                results = []
                 try:
-                    img_tag = f"preset-{p['title']}:latest"
-                    # 用预设ID作为challenge_id（负数避免冲突）
-                    r = build_challenge_image(-(p["id"] + 1), p["dockerfile_content"])
-                    results.append({"title": p["title"], "ok": r["success"], "tag": r.get("image_tag", ""), "error": r.get("error", "")[:100]})
+                    d = _docker.from_env(timeout=5)
                 except Exception as e:
-                    results.append({"title": p["title"], "ok": False, "tag": "", "error": str(e)[:100]})
-            all_ok = all(r["ok"] for r in results)
-            return _json.dumps({"ok": all_ok, "results": results}, ensure_ascii=False)
+                    yield "data: " + _json.dumps({"type": "error", "msg": f"Docker 连接失败: {e}"}, ensure_ascii=False) + "\n\n"
+                    return
+                for i, p in enumerate(PRESETS):
+                    title = p["title"]
+                    yield "data: " + _json.dumps({"type": "preset_start", "index": i, "title": title}, ensure_ascii=False) + "\n\n"
+                    try:
+                        stream = d.api.build(
+                            fileobj=__import__("io").BytesIO(p["dockerfile_content"].encode()),
+                            tag=f"preset-{title}:latest",
+                            rm=True, forcerm=True, decode=True
+                        )
+                        ok = True
+                        for chunk in stream:
+                            if "stream" in chunk:
+                                line = chunk["stream"].rstrip()
+                                if line:
+                                    yield "data: " + _json.dumps({"type": "log", "line": line}, ensure_ascii=False) + "\n\n"
+                            elif "error" in chunk:
+                                yield "data: " + _json.dumps({"type": "log", "line": "[ERROR] " + chunk["error"].rstrip()}, ensure_ascii=False) + "\n\n"
+                                ok = False
+                        results.append({"title": title, "ok": ok})
+                        yield "data: " + _json.dumps({"type": "preset_done", "index": i, "title": title, "ok": ok}, ensure_ascii=False) + "\n\n"
+                    except Exception as e:
+                        yield "data: " + _json.dumps({"type": "log", "line": f"[FAIL] {e}"}, ensure_ascii=False) + "\n\n"
+                        results.append({"title": title, "ok": False})
+                        yield "data: " + _json.dumps({"type": "preset_done", "index": i, "title": title, "ok": False}, ensure_ascii=False) + "\n\n"
+                all_ok = all(r["ok"] for r in results)
+                yield "data: " + _json.dumps({"type": "all_done", "ok": all_ok, "results": results}, ensure_ascii=False) + "\n\n"
+            return Response(generate(), mimetype="text/event-stream")
 
         if action == "finish":
             try:

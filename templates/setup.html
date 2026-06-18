@@ -1,7 +1,6 @@
 <!--
-  首次安装引导页
-  自动检查运行环境，拉取基础镜像，预构建所有预设题目镜像。
-  完成后才能进入系统。
+  首次安装引导页 — 自动检查环境、拉取基础镜像、预构建全部题库镜像。
+  构建过程使用 SSE 实时显示 Docker 构建日志（类似终端 apt-get 输出）。
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -13,24 +12,25 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height:100vh; display:flex; align-items:center; justify-content:center; font-family: 'Segoe UI', sans-serif; }
-        .setup-card { background:#fff; border-radius:16px; padding:40px; max-width:600px; width:90%; box-shadow: 0 25px 60px rgba(0,0,0,.4); }
-        .setup-card h4 { font-weight:700; color:#0f172a; }
-        .step { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #f1f5f9; }
-        .step-icon { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+        .setup-card { background:#fff; border-radius:16px; padding:40px; max-width:720px; width:95%; box-shadow: 0 25px 60px rgba(0,0,0,.4); }
+        .step { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid #f1f5f9; }
+        .step-icon { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; margin-top:2px; }
         .step-icon.pending { background:#e2e8f0; color:#94a3b8; }
         .step-icon.running { background:#dbeafe; color:#3b82f6; animation:pulse 1s infinite; }
         .step-icon.ok { background:#dcfce7; color:#22c55e; }
         .step-icon.fail { background:#fee2e2; color:#ef4444; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+        .build-log { background:#1e293b; color:#e2e8f0; font-family:'Cascadia Code','Consolas',monospace; font-size:.75rem; padding:10px 14px; border-radius:8px; max-height:200px; overflow-y:auto; white-space:pre-wrap; line-height:1.4; margin-top:6px; display:none; }
+        .build-log.visible { display:block; }
     </style>
 </head>
 <body>
 <div class="setup-card text-center">
-    <div style="font-size:3rem;margin-bottom:8px;">&#x2601;&#xFE0F;</div>
-    <h4>云计算竞赛平台</h4>
+    <div style="font-size:3rem;margin-bottom:8px;">&#x2601;</div>
+    <h4 style="font-weight:700;">云计算竞赛平台</h4>
     <p class="text-muted mb-4">首次运行 · 环境初始化</p>
 
-    <div id="steps" class="text-start mb-4"></div>
+    <div id="steps" class="text-start mb-3"></div>
 
     <div id="status" class="text-muted small mb-3">正在检查环境…</div>
     <button id="btnGo" class="btn btn-primary w-100" style="display:none;" onclick="location.href='/'">进入系统</button>
@@ -43,14 +43,19 @@
 const steps = [
     {id:'check', label:'检查运行环境'},
     {id:'pull_base', label:'拉取基础镜像 (ubuntu:22.04)'},
-    {id:'build_presets', label:'预构建题库镜像'},
+    {id:'build_presets', label:'预构建题库镜像', hasLog:true},
     {id:'finish', label:'完成初始化'},
 ];
 
 function renderSteps() {
     let html = '';
     steps.forEach((s,i) => {
-        html += '<div class="step"><div class="step-icon pending" id="icon'+i+'"><i class="bi bi-dash"></i></div><div><strong>'+s.label+'</strong><div class="small text-muted" id="msg'+i+'">等待中…</div></div></div>';
+        html += '<div class="step">';
+        html += '<div class="step-icon pending" id="icon'+i+'"><i class="bi bi-dash"></i></div>';
+        html += '<div style="flex:1"><strong>'+s.label+'</strong>';
+        html += '<div class="small text-muted" id="msg'+i+'">等待中…</div>';
+        if (s.hasLog) html += '<div class="build-log" id="log'+i+'"></div>';
+        html += '</div></div>';
     });
     document.getElementById('steps').innerHTML = html;
 }
@@ -65,46 +70,113 @@ function setStep(i, state, msg) {
     if (msg) msgEl.textContent = msg;
 }
 
+function appendLog(i, line) {
+    const logEl = document.getElementById('log'+i);
+    if (!logEl) return;
+    logEl.classList.add('visible');
+    logEl.textContent += line + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
 async function run() {
     renderSteps();
-    for (let i = 0; i < steps.length; i++) {
-        const s = steps[i];
-        setStep(i, 'running', '执行中…');
-        document.getElementById('status').textContent = s.label + '…';
-        document.getElementById('bar').style.width = (i / steps.length * 100) + '%';
 
-        try {
-            const resp = await fetch('/setup/api/' + s.id);
-            const data = await resp.json();
-            if (s.id === 'check') {
-                data.checks.forEach(c => {
-                    // show each sub-check
-                });
-                if (data.all_ok) setStep(i, 'ok', '环境检查通过');
-                else setStep(i, 'fail', '环境检查未通过');
-            } else if (s.id === 'build_presets') {
-                if (data.ok) {
-                    setStep(i, 'ok', '全部 ' + data.results.length + ' 个镜像构建成功');
-                } else {
-                    const failed = data.results.filter(r => !r.ok).map(r => r.title).join(', ');
-                    setStep(i, 'fail', '部分失败: ' + failed);
-                }
-            } else {
-                if (data.ok) setStep(i, 'ok', data.msg || '完成');
-                else setStep(i, 'fail', data.msg || data.error || '失败');
+    // Step 0: check
+    setStep(0, 'running', '执行中…');
+    try {
+        const r0 = await fetch('/setup/api/check');
+        const d0 = await r0.json();
+        if (d0.all_ok) setStep(0, 'ok', '环境检查通过 — Python / Docker / SQLite 正常');
+        else setStep(0, 'fail', '环境检查未通过，请检查 Docker 是否启动');
+    } catch(e) { setStep(0, 'fail', '请求失败: '+e.message); }
+    document.getElementById('bar').style.width = '15%';
+
+    // Step 1: pull base
+    setStep(1, 'running', '正在从 Docker Hub 拉取…');
+    document.getElementById('status').textContent = '拉取 ubuntu:22.04…';
+    try {
+        const r1 = await fetch('/setup/api/pull_base');
+        const d1 = await r1.json();
+        if (d1.ok) setStep(1, 'ok', d1.msg || '拉取完成');
+        else setStep(1, 'fail', d1.msg || '拉取失败');
+    } catch(e) { setStep(1, 'fail', '请求失败: '+e.message); }
+    document.getElementById('bar').style.width = '30%';
+    document.getElementById('status').textContent = '预构建题库镜像…';
+
+    // Step 2: build presets — use SSE for real-time output
+    setStep(2, 'running', '开始构建…');
+    document.getElementById('bar').style.width = '45%';
+
+    await new Promise((resolve) => {
+        const es = new EventSource('/setup/api/build_presets');
+        let total = 0, done = 0;
+
+        es.addEventListener('message', function(e) {
+            const d = JSON.parse(e.data);
+
+            if (d.type === 'start') {
+                total = d.total;
+                setStep(2, 'running', '0/' + total + ' 个镜像…');
             }
-        } catch(e) {
-            setStep(i, 'fail', '网络错误: ' + e.message);
-        }
-    }
+            else if (d.type === 'preset_start') {
+                appendLog(2, '\n=== [' + d.title + '] ===');
+                setStep(2, 'running', (d.index) + '/' + total + ' 个镜像 — 正在构建: ' + d.title);
+            }
+            else if (d.type === 'log') {
+                appendLog(2, d.line);
+            }
+            else if (d.type === 'preset_done') {
+                done++;
+                setStep(2, 'running', done + '/' + total + ' 个镜像 — ' + (d.ok ? d.title + ' 完成' : d.title + ' 失败'));
+                if (!d.ok) appendLog(2, '[FAILED] ' + d.title);
+            }
+            else if (d.type === 'all_done') {
+                es.close();
+                document.getElementById('bar').style.width = '85%';
+                if (d.ok) {
+                    setStep(2, 'ok', '全部 ' + d.results.length + ' 个镜像构建成功');
+                } else {
+                    const failed = d.results.filter(r => !r.ok).map(r => r.title).join(', ');
+                    setStep(2, 'fail', '失败: ' + failed);
+                }
+                resolve();
+            }
+            else if (d.type === 'error') {
+                es.close();
+                setStep(2, 'fail', d.msg);
+                resolve();
+            }
+        });
+
+        es.addEventListener('error', function() {
+            es.close();
+            resolve();
+        });
+    });
+
+    // Step 3: finish
+    setStep(3, 'running', '保存配置…');
+    document.getElementById('status').textContent = '完成初始化…';
+    document.getElementById('bar').style.width = '95%';
+    try {
+        const r3 = await fetch('/setup/api/finish');
+        const d3 = await r3.json();
+        if (d3.ok) setStep(3, 'ok', '初始化完成');
+        else setStep(3, 'fail', d3.error || '保存失败');
+    } catch(e) { setStep(3, 'fail', '请求失败: '+e.message); }
+
     document.getElementById('bar').style.width = '100%';
     document.getElementById('bar').classList.remove('progress-bar-animated');
+
     const allOk = [...document.querySelectorAll('.step-icon')].every(el => el.classList.contains('ok'));
     if (allOk) {
         document.getElementById('status').innerHTML = '<span class="text-success fw-bold">&#x2705; 初始化完成！</span>';
         document.getElementById('btnGo').style.display = '';
     } else {
-        document.getElementById('status').innerHTML = '<span class="text-danger fw-bold">&#x26A0; 部分步骤失败，请检查日志后重试</span>';
+        document.getElementById('status').innerHTML = '<span class="text-danger fw-bold">&#x26A0; 部分步骤失败，请检查后刷新重试</span>';
+        document.getElementById('btnGo').style.display = '';
+        document.getElementById('btnGo').textContent = '重新初始化';
+        document.getElementById('btnGo').onclick = function(){ location.reload(); };
     }
 }
 
