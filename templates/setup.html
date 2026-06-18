@@ -43,7 +43,7 @@
 const steps = [
     {id:'check', label:'检查运行环境'},
     {id:'pull_base', label:'拉取基础镜像 (ubuntu:22.04)'},
-    {id:'build_presets', label:'预构建题库镜像', hasLog:true},
+    {id:'build_base', label:'构建通用基础镜像 (SSH + 常用工具)', hasLog:true},
     {id:'finish', label:'完成初始化'},
 ];
 
@@ -103,42 +103,27 @@ async function run() {
     document.getElementById('bar').style.width = '30%';
     document.getElementById('status').textContent = '预构建题库镜像…';
 
-    // Step 2: build presets — use SSE for real-time output
-    setStep(2, 'running', '开始构建…');
+    // Step 2: build base image — SSE 实时输出
+    setStep(2, 'running', '开始构建通用基础镜像…');
     document.getElementById('bar').style.width = '45%';
 
     await new Promise((resolve) => {
-        const es = new EventSource('/setup/api/build_presets');
-        let total = 0, done = 0;
+        const es = new EventSource('/setup/api/build_base');
 
         es.addEventListener('message', function(e) {
             const d = JSON.parse(e.data);
-
             if (d.type === 'start') {
-                total = d.total;
-                setStep(2, 'running', '0/' + total + ' 个镜像…');
-            }
-            else if (d.type === 'preset_start') {
-                appendLog(2, '\n=== [' + d.title + '] ===');
-                setStep(2, 'running', (d.index) + '/' + total + ' 个镜像 — 正在构建: ' + d.title);
+                appendLog(2, '=== 开始构建通用基础镜像 comp-base:latest ===');
+                setStep(2, 'running', '正在构建…');
             }
             else if (d.type === 'log') {
                 appendLog(2, d.line);
             }
-            else if (d.type === 'preset_done') {
-                done++;
-                setStep(2, 'running', done + '/' + total + ' 个镜像 — ' + (d.ok ? d.title + ' 完成' : d.title + ' 失败'));
-                if (!d.ok) appendLog(2, '[FAILED] ' + d.title);
-            }
             else if (d.type === 'all_done') {
                 es.close();
                 document.getElementById('bar').style.width = '85%';
-                if (d.ok) {
-                    setStep(2, 'ok', '全部 ' + d.results.length + ' 个镜像构建成功');
-                } else {
-                    const failed = d.results.filter(r => !r.ok).map(r => r.title).join(', ');
-                    setStep(2, 'fail', '失败: ' + failed);
-                }
+                if (d.ok) setStep(2, 'ok', '通用基础镜像构建成功 — 后续所有题目直接使用此镜像');
+                else setStep(2, 'fail', '基础镜像构建失败，请检查网络后重试');
                 resolve();
             }
             else if (d.type === 'error') {

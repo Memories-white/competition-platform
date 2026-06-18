@@ -158,47 +158,39 @@ def create_app():
             except Exception as e:
                 return _json.dumps({"ok": False, "msg": str(e)[:200]})
 
-        if action == "build_presets":
-            # SSE 流式返回构建进度
-            def generate():
-                from data.presets import PRESETS
-                import docker as _docker
-                yield "data: " + _json.dumps({"type": "start", "total": len(PRESETS)}, ensure_ascii=False) + "\n\n"
-                results = []
+        if action == "build_base":
+            # 构建通用基础镜像（一次性安装所有常用工具）
+            base_dockerfile = """FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y \\
+    openssh-server vim curl wget net-tools \\
+    iputils-ping dnsutils git python3 python3-pip \\
+    && rm -rf /var/lib/apt/lists/*
+RUN echo 'root:password' | chpasswd \\
+    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+EXPOSE 22 80 443 5000 8000 8080
+CMD service ssh start && tail -f /dev/null"""
+            def generate_base():
+                yield "data: " + _json.dumps({"type": "start"}, ensure_ascii=False) + "\n\n"
                 try:
+                    import docker as _docker
                     d = _docker.from_env(timeout=5)
+                    stream = d.api.build(
+                        fileobj=__import__("io").BytesIO(base_dockerfile.encode()),
+                        tag="comp-base:latest", rm=True, forcerm=True, decode=True
+                    )
+                    ok = True
+                    for chunk in stream:
+                        if "stream" in chunk:
+                            line = chunk["stream"].rstrip()
+                            if line:
+                                yield "data: " + _json.dumps({"type": "log", "line": line}, ensure_ascii=False) + "\n\n"
+                        elif "error" in chunk:
+                            ok = False
+                            yield "data: " + _json.dumps({"type": "log", "line": "[ERROR] " + chunk["error"].rstrip()}, ensure_ascii=False) + "\n\n"
+                    yield "data: " + _json.dumps({"type": "all_done", "ok": ok}, ensure_ascii=False) + "\n\n"
                 except Exception as e:
-                    yield "data: " + _json.dumps({"type": "error", "msg": f"Docker 连接失败: {e}"}, ensure_ascii=False) + "\n\n"
-                    return
-                for i, p in enumerate(PRESETS):
-                    title = p["title"]
-                    # Docker tag 只允许 [a-zA-Z0-9_.-]，用预设 ID 确保合法
-                    safe_tag = f"preset-{p['id']}:latest"
-                    yield "data: " + _json.dumps({"type": "preset_start", "index": i, "title": title, "tag": safe_tag}, ensure_ascii=False) + "\n\n"
-                    try:
-                        stream = d.api.build(
-                            fileobj=__import__("io").BytesIO(p["dockerfile_content"].encode()),
-                            tag=safe_tag,
-                            rm=True, forcerm=True, decode=True
-                        )
-                        ok = True
-                        for chunk in stream:
-                            if "stream" in chunk:
-                                line = chunk["stream"].rstrip()
-                                if line:
-                                    yield "data: " + _json.dumps({"type": "log", "line": line}, ensure_ascii=False) + "\n\n"
-                            elif "error" in chunk:
-                                yield "data: " + _json.dumps({"type": "log", "line": "[ERROR] " + chunk["error"].rstrip()}, ensure_ascii=False) + "\n\n"
-                                ok = False
-                        results.append({"title": title, "ok": ok})
-                        yield "data: " + _json.dumps({"type": "preset_done", "index": i, "title": title, "ok": ok}, ensure_ascii=False) + "\n\n"
-                    except Exception as e:
-                        yield "data: " + _json.dumps({"type": "log", "line": f"[FAIL] {e}"}, ensure_ascii=False) + "\n\n"
-                        results.append({"title": title, "ok": False})
-                        yield "data: " + _json.dumps({"type": "preset_done", "index": i, "title": title, "ok": False}, ensure_ascii=False) + "\n\n"
-                all_ok = all(r["ok"] for r in results)
-                yield "data: " + _json.dumps({"type": "all_done", "ok": all_ok, "results": results}, ensure_ascii=False) + "\n\n"
-            return Response(generate(), mimetype="text/event-stream")
+                    yield "data: " + _json.dumps({"type": "error", "msg": str(e)}, ensure_ascii=False) + "\n\n"
+            return Response(generate_base(), mimetype="text/event-stream")
 
         if action == "finish":
             try:

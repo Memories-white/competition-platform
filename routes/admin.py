@@ -110,14 +110,15 @@ def create_competition():
                     judge_type=preset.get("judge_type", "port"),
                     judge_config=preset.get("judge_config", "{}"),
                     dockerfile_content=dockerfile,
+                    image_tag="comp-base:latest",  # 直接使用通用基础镜像，无需额外构建
                     points=100,
                     order=created + 1,
                 )
                 db.session.add(chal)
-                db.session.flush()  # 获取 chal.id，镜像由后台定时任务异步构建
+                db.session.flush()
                 created += 1
             db.session.commit()
-            flash(f"竞赛创建成功，已添加 {created} 道题目。Docker 镜像正在后台构建，请稍后刷新查看。", "success")
+            flash(f"竞赛创建成功，已添加 {created} 道题目。环境将自动部署。", "success")
         else:
             flash("竞赛创建成功，请进入管理页添加题目", "success")
     except Exception as e:
@@ -273,18 +274,22 @@ def create_challenge(comp_id):
     db.session.flush()
 
     if challenge_type == "docker":
-        # 选择模板后，读取模板 Dockerfile 内容保存，镜像由后台定时任务异步构建
-        if template_name and not dockerfile_content:
-            import os
-            from config import Config
-            tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
-            if os.path.isfile(tpl_path):
-                with open(tpl_path) as f:
-                    challenge.dockerfile_content = f.read()
-        # dockerfile_content 非空时内容已在上方赋值
+        if dockerfile_content:
+            # 管理员提供了自定义 Dockerfile，需要后台构建专属镜像
+            challenge.image_tag = ""
+        else:
+            # 没有自定义 Dockerfile，直接使用通用基础镜像
+            challenge.image_tag = "comp-base:latest"
+            if template_name:
+                import os
+                from config import Config
+                tpl_path = os.path.join(Config.DOCKER_TEMPLATES_DIR, template_name, "Dockerfile")
+                if os.path.isfile(tpl_path):
+                    with open(tpl_path) as f:
+                        challenge.dockerfile_content = f.read()
 
     db.session.commit()
-    flash(f"题目「{title}」创建成功，Docker 镜像将在后台自动构建。", "success")
+    flash(f"题目「{title}」创建成功。" + ("" if challenge.image_tag else " 自定义镜像将在后台构建。"), "success")
     return redirect(url_for("admin.competition_detail", comp_id=comp_id))
 
 
