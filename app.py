@@ -167,8 +167,10 @@ RUN apt-get update && apt-get install -y \\
     && rm -rf /var/lib/apt/lists/*
 RUN echo 'root:password' | chpasswd \\
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+# 默认欢迎页（选手访问 Web 端口时可见）
+RUN mkdir -p /var/www && echo '<html><body style=\"font-family:sans-serif;text-align:center;padding-top:80px\"><h1>竞赛环境就绪</h1><p>请通过 SSH 登录容器完成任务</p><p><code>ssh root@主机IP -p SSH端口</code></p></body></html>' > /var/www/index.html
 EXPOSE 22 80 443 5000 8000 8080
-CMD service ssh start && tail -f /dev/null"""
+CMD service ssh start && python3 -m http.server 80 --directory /var/www & tail -f /dev/null"""
             def generate_base():
                 yield "data: " + _json.dumps({"type": "start"}, ensure_ascii=False) + "\n\n"
                 try:
