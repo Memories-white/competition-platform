@@ -162,9 +162,11 @@ def create_app():
             # 构建通用基础镜像（一次性安装所有常用工具）
             base_dockerfile = """FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \\
-    openssh-server vim curl wget net-tools \\
+    openssh-server vim curl wget net-tools iproute2 \\
     iputils-ping dnsutils git python3 python3-pip \\
     && rm -rf /var/lib/apt/lists/*
+# 保留 apt 包缓存以便选手直接安装包（不删 lists）
+RUN apt-get update
 RUN echo 'root:password' | chpasswd \\
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 # 默认欢迎页（选手访问 Web 端口时可见）
