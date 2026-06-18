@@ -1,55 +1,61 @@
 <!--
-  Web SSH 终端页 — 选手在浏览器内操作竞赛容器
-  使用 xterm.js 终端模拟器 + SocketIO 桥接到容器 SSH
+  Web SSH 终端页 — 全屏独占终端，选手在浏览器内操作竞赛容器
+  使用 xterm.js + SocketIO 桥接到容器 SSH
 -->
-{% extends "base.html" %}
-{% block title %}Web 终端 - {{ env.challenge.title if env.challenge else '环境' }}{% endblock %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ env.challenge.title if env.challenge else '环境' }} - Web 终端</title>
+    <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io@4.7.5/client-dist/socket.io.min.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#1e1e1e; overflow:hidden; }
+        #terminal { position:absolute; top:0; left:0; right:0; bottom:28px; }
+        #statusbar { position:absolute; bottom:0; left:0; right:0; height:28px; background:#333; color:#aaa; font:12px/28px 'Segoe UI',sans-serif; padding:0 12px; display:flex; justify-content:space-between; }
+        #statusbar .online { color:#4caf50; }
+        #statusbar .offline { color:#f44336; }
+    </style>
+</head>
+<body>
 
-{% block content %}
-<div class="breadcrumb-bar">
-    <a href="{{ url_for('contestant.dashboard') }}">我的环境</a>
-    <span>/</span>
-    <a href="{{ url_for('contestant.environment_detail', env_id=env.id) }}">{{ env.challenge.title if env.challenge else '环境' }}</a>
-    <span>/</span>
-    <span>Web 终端</span>
+<div id="terminal"></div>
+
+<div id="statusbar">
+    <span>SSH: {{ ssh_user }}@{{ host_ip }}:{{ ssh_port }} | Ctrl+C 复制 &nbsp; Ctrl+V 粘贴</span>
+    <span id="connStatus" class="offline">连接中…</span>
 </div>
 
-<div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-terminal-fill me-2"></i>{{ env.challenge.title if env.challenge else '环境' }} — Web 终端</span>
-        <span class="small text-muted">SSH: {{ ssh_user }}@{{ host_ip }}:{{ ssh_port }}</span>
-    </div>
-    <div class="card-body p-0" style="background:#1e1e1e;">
-        <div id="terminal" style="height:500px;width:100%;"></div>
-    </div>
-    <div class="card-footer small text-muted">
-        <span id="status">连接中…</span>
-        <span class="ms-3">提示：可在终端内直接操作 Linux 命令</span>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_scripts %}
-<link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script>
+var socket = io();
 var term = new Terminal({
     cursorBlink: true,
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: "'Cascadia Code','Consolas','Courier New',monospace",
     theme: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#ffffff' },
-    cols: 120,
-    rows: 35,
+    allowProposedApi: true,
 });
 term.open(document.getElementById('terminal'));
 
-// 复制：选中即自动复制到剪贴板
+// 自适应窗口大小
+function fit() {
+    var cols = Math.floor((window.innerWidth - 2) / 9.1);
+    var rows = Math.floor((window.innerHeight - 30) / 18.5);
+    term.resize(cols, rows);
+    socket.emit('term_resize', {cols: cols, rows: rows});
+}
+fit();
+window.addEventListener('resize', fit);
+
+// Ctrl+C 复制选中，Ctrl+V 粘贴
 term.attachCustomKeyEventHandler(function(e) {
     if (e.ctrlKey && e.key === 'c' && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection()).catch(function(){});
         return false;
     }
-    // 粘贴：Ctrl+Shift+V 或右键粘贴
     if (e.ctrlKey && e.key === 'v') {
         navigator.clipboard.readText().then(function(text) {
             socket.emit('term_input', {data: text});
@@ -59,9 +65,9 @@ term.attachCustomKeyEventHandler(function(e) {
     return true;
 });
 
-term.write('正在连接容器 SSH…\r\n');
+term.write('正在连接容器 SSH...\r\n');
 
-// 建立 SocketIO SSH 桥接
+// SocketIO SSH 桥接
 socket.emit('term_connect', {
     host: '{{ host_ip }}',
     port: {{ ssh_port }},
@@ -71,32 +77,19 @@ socket.emit('term_connect', {
 
 socket.on('term_ready', function(data) {
     if (data.ok) {
-        document.getElementById('status').innerHTML = '<span class="text-success">已连接</span>';
-        term.write('已连接！\r\n');
+        document.getElementById('connStatus').className = 'online';
+        document.getElementById('connStatus').textContent = '已连接';
+        term.write('\x1b[32m已连接！\x1b[0m\r\n');
     } else {
-        document.getElementById('status').innerHTML = '<span class="text-danger">连接失败: ' + (data.error || '') + '</span>';
-        term.write('连接失败: ' + (data.error || '未知错误') + '\r\n');
+        document.getElementById('connStatus').textContent = '连接失败: ' + (data.error || '');
+        term.write('\x1b[31m连接失败: ' + (data.error || '') + '\x1b[0m\r\n');
     }
 });
 
-// 键盘输入 → SSH
-term.onData(function(data) {
-    socket.emit('term_input', {data: data});
-});
+term.onData(function(data) { socket.emit('term_input', {data: data}); });
+socket.on('term_data', function(data) { term.write(data.data); });
 
-// SSH 输出 → 终端
-socket.on('term_data', function(data) {
-    term.write(data.data);
-});
-
-// 窗口大小变化时通知 SSH
-term.onResize(function(size) {
-    socket.emit('term_resize', {cols: size.cols, rows: size.rows});
-});
-
-// 页面关闭时断开
-window.addEventListener('beforeunload', function() {
-    socket.emit('term_disconnect');
-});
+window.addEventListener('beforeunload', function() { socket.emit('term_disconnect'); });
 </script>
-{% endblock %}
+</body>
+</html>

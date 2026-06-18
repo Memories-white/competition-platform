@@ -720,9 +720,10 @@ if __name__ == "__main__":
 
     app = create_app()
 
-    # ── 启动横幅 ──
-    host_ip = app.config.get("HOST_IP", "127.0.0.1")
-    banner = f"""
+    # ── 启动横幅（仅在 reloader 子进程中打印一次，避免重复）──
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        host_ip = app.config.get("HOST_IP", "127.0.0.1")
+        banner = f"""
     ############################################################
     #                                                          #
     #         ███╗   ███╗███████╗███╗   ███╗ ██████╗          #
@@ -736,11 +737,11 @@ if __name__ == "__main__":
     #                                                          #
     ############################################################
     """
-    print(banner)
-    print("  [管理员账号]  用户名: admin    密码: admin123")
-    print("  [测试选手]    用户名: player1  密码: player123")
-    print(f"  [访问地址]    http://{host_ip}:5000")
-    print(f"  [系统日志]    http://{host_ip}:5000/admin/logs")
-    print()
+        print(banner)
+        print("  [管理员账号]  用户名: admin    密码: admin123")
+        print("  [测试选手]    用户名: player1  密码: player123")
+        print(f"  [访问地址]    http://{host_ip}:5000")
+        print(f"  [系统日志]    http://{host_ip}:5000/admin/logs")
+        print()
 
     socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
