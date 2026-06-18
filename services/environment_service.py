@@ -29,7 +29,11 @@ def deploy_competition_environments(competition_id: int, socketio=None) -> dict:
         return {"success": False, "error": "竞赛不存在"}
 
     from models.models import User
-    contestants = User.query.filter_by(role="contestant").all()
+    # 只部署已分配到此竞赛的选手
+    contestants = competition.contestants.all()
+    if not contestants:
+        # 未分配选手时回退到所有选手（兼容旧竞赛）
+        contestants = User.query.filter_by(role="contestant").all()
     challenges = Challenge.query.filter_by(competition_id=competition_id).all()
     # 过滤掉试卷类题目（无需 Docker 部署）
     docker_challenges = [c for c in challenges if c.challenge_type != "exam"]

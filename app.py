@@ -402,6 +402,13 @@ def _migrate_database(app):
             conn.commit()
             logger.info("数据库迁移：创建试卷题目表 | Migration: created exam_questions table")
 
+        # 竞赛选手分配关联表
+        if "competition_contestants" not in inspector.get_table_names():
+            from models.models import competition_contestants
+            competition_contestants.create(db.engine, checkfirst=True)
+            conn.commit()
+            logger.info("数据库迁移：创建选手分配关联表 | Migration: created competition_contestants table")
+
         conn.close()
 
 

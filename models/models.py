@@ -3,6 +3,13 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+# 竞赛-选手多对多关联表
+competition_contestants = db.Table(
+    "competition_contestants",
+    db.Column("competition_id", db.Integer, db.ForeignKey("competitions.id"), primary_key=True),
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
+)
+
 
 class User(db.Model):
     __tablename__ = "users"
@@ -44,6 +51,8 @@ class Competition(db.Model):
 
     challenges = db.relationship("Challenge", backref="competition", lazy=True, cascade="all, delete-orphan")
     environments = db.relationship("Environment", backref="competition", lazy=True)
+    contestants = db.relationship("User", secondary=competition_contestants, lazy="dynamic",
+                                  backref=db.backref("assigned_competitions", lazy="dynamic"))
 
     def to_dict(self):
         return {

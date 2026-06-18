@@ -132,6 +132,22 @@
                         </div>
                     </div>
                     <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" name="description" rows="2" placeholder="竞赛规则和说明"></textarea></div>
+                    {# 选手分配 #}
+                    <div class="mb-3">
+                        <label class="form-label">参赛选手 <small class="text-muted">（不选则默认全部选手可参加）</small></label>
+                        <div class="row g-1 small" style="max-height:120px;overflow-y:auto;border:1px solid #dee2e6;border-radius:6px;padding:8px;">
+                            {% for u in contestants %}
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="contestant_ids" value="{{ u.id }}" id="cc{{ u.id }}">
+                                    <label class="form-check-label" for="cc{{ u.id }}">{{ u.username }}{% if u.team_name %} ({{ u.team_name }}){% endif %}</label>
+                                </div>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">暂无选手，请先在用户管理中创建选手账号</span>
+                            {% endfor %}
+                        </div>
+                    </div>
                     {# 时间范围 #}
                     <div class="row mb-3">
                         <div class="col-6"><label class="form-label">开始时间</label><input type="datetime-local" class="form-control" name="start_time"></div>

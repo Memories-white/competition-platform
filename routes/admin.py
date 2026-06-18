@@ -57,7 +57,8 @@ def dashboard():
 @admin_required
 def competitions():
     comps = Competition.query.order_by(Competition.created_at.desc()).all()
-    return render_template("admin/competitions.html", competitions=comps, presets=PRESETS)
+    contestants = User.query.filter_by(role="contestant").all()
+    return render_template("admin/competitions.html", competitions=comps, presets=PRESETS, contestants=contestants)
 
 
 @admin_bp.route("/competitions/create", methods=["POST"])
@@ -85,6 +86,13 @@ def create_competition():
         )
         db.session.add(comp)
         db.session.commit()
+
+        # 分配参赛选手
+        contestant_ids = request.form.getlist("contestant_ids")
+        if contestant_ids:
+            contestants = User.query.filter(User.id.in_([int(c) for c in contestant_ids]), User.role == "contestant").all()
+            comp.contestants.extend(contestants)
+            db.session.commit()
 
         # 从选中的题库预设创建题目
         preset_ids = request.form.getlist("preset_ids")
@@ -160,10 +168,16 @@ def update_competition_status(comp_id):
         return redirect(url_for("admin.competitions"))
 
     new_status = request.form.get("status", "")
+    if new_status == "active":
+        # 检查是否分配了选手
+        if comp.contestants.count() == 0:
+            flash("请先为竞赛分配参赛选手", "error")
+            return redirect(url_for("admin.competition_detail", comp_id=comp_id))
+
     if new_status in ("draft", "active", "finished"):
         comp.status = new_status
         if new_status == "active":
-            comp.auto_deployed = False  # 重置以让调度器重新触发部署
+            comp.auto_deployed = False
         db.session.commit()
 
         if new_status == "active":
