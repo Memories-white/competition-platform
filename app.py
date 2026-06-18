@@ -172,11 +172,13 @@ def create_app():
                     return
                 for i, p in enumerate(PRESETS):
                     title = p["title"]
-                    yield "data: " + _json.dumps({"type": "preset_start", "index": i, "title": title}, ensure_ascii=False) + "\n\n"
+                    # Docker tag 只允许 [a-zA-Z0-9_.-]，用预设 ID 确保合法
+                    safe_tag = f"preset-{p['id']}:latest"
+                    yield "data: " + _json.dumps({"type": "preset_start", "index": i, "title": title, "tag": safe_tag}, ensure_ascii=False) + "\n\n"
                     try:
                         stream = d.api.build(
                             fileobj=__import__("io").BytesIO(p["dockerfile_content"].encode()),
-                            tag=f"preset-{title}:latest",
+                            tag=safe_tag,
                             rm=True, forcerm=True, decode=True
                         )
                         ok = True
