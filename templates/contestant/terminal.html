@@ -1,0 +1,85 @@
+<!--
+  Web SSH 终端页 — 选手在浏览器内操作竞赛容器
+  使用 xterm.js 终端模拟器 + SocketIO 桥接到容器 SSH
+-->
+{% extends "base.html" %}
+{% block title %}Web 终端 - {{ env.challenge.title if env.challenge else '环境' }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb-bar">
+    <a href="{{ url_for('contestant.dashboard') }}">我的环境</a>
+    <span>/</span>
+    <a href="{{ url_for('contestant.environment_detail', env_id=env.id) }}">{{ env.challenge.title if env.challenge else '环境' }}</a>
+    <span>/</span>
+    <span>Web 终端</span>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-terminal-fill me-2"></i>{{ env.challenge.title if env.challenge else '环境' }} — Web 终端</span>
+        <span class="small text-muted">SSH: {{ ssh_user }}@{{ host_ip }}:{{ ssh_port }}</span>
+    </div>
+    <div class="card-body p-0" style="background:#1e1e1e;">
+        <div id="terminal" style="height:500px;width:100%;"></div>
+    </div>
+    <div class="card-footer small text-muted">
+        <span id="status">连接中…</span>
+        <span class="ms-3">提示：可在终端内直接操作 Linux 命令</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script>
+var term = new Terminal({
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: "'Cascadia Code','Consolas','Courier New',monospace",
+    theme: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#ffffff' },
+    cols: 120,
+    rows: 35,
+});
+term.open(document.getElementById('terminal'));
+term.write('正在连接容器 SSH…\r\n');
+
+// 建立 SocketIO SSH 桥接
+socket.emit('term_connect', {
+    host: '{{ host_ip }}',
+    port: {{ ssh_port }},
+    user: '{{ ssh_user }}',
+    pass: '{{ ssh_pass }}',
+});
+
+socket.on('term_ready', function(data) {
+    if (data.ok) {
+        document.getElementById('status').innerHTML = '<span class="text-success">已连接</span>';
+        term.write('已连接！\r\n');
+    } else {
+        document.getElementById('status').innerHTML = '<span class="text-danger">连接失败: ' + (data.error || '') + '</span>';
+        term.write('连接失败: ' + (data.error || '未知错误') + '\r\n');
+    }
+});
+
+// 键盘输入 → SSH
+term.onData(function(data) {
+    socket.emit('term_input', {data: data});
+});
+
+// SSH 输出 → 终端
+socket.on('term_data', function(data) {
+    term.write(data.data);
+});
+
+// 窗口大小变化时通知 SSH
+term.onResize(function(size) {
+    socket.emit('term_resize', {cols: size.cols, rows: size.rows});
+});
+
+// 页面关闭时断开
+window.addEventListener('beforeunload', function() {
+    socket.emit('term_disconnect');
+});
+</script>
+{% endblock %}

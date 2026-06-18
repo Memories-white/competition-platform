@@ -188,3 +188,25 @@ def exam_submit(challenge_id):
 
     result = judge_exam(challenge_id, session["user_id"], answers)
     return jsonify(result)
+
+
+# ── Web 终端 ──
+
+@contestant_bp.route("/terminal/<int:env_id>")
+@contestant_required
+def terminal(env_id):
+    env = db.session.get(Environment, env_id)
+    if not env:
+        flash("环境不存在", "error")
+        return redirect(url_for("contestant.dashboard"))
+    if env.user_id != session["user_id"]:
+        flash("无权访问此环境", "error")
+        return redirect(url_for("contestant.dashboard"))
+
+    from config import Config
+    return render_template("contestant/terminal.html",
+                           env=env,
+                           host_ip=Config.HOST_IP,
+                           ssh_port=env.host_port,
+                           ssh_user="root",
+                           ssh_pass="password")

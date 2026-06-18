@@ -65,6 +65,9 @@
                         <button class="btn btn-primary btn-sm" onclick="copyCmd()">
                             <i class="bi bi-clipboard"></i> 复制
                         </button>
+                        <a href="{{ url_for('contestant.terminal', env_id=env.id) }}" class="btn btn-success btn-sm">
+                            <i class="bi bi-display"></i> Web 终端
+                        </a>
                     </div>
                     {# 登录信息（如 root/password） #}
                     {% if challenge.login_info %}

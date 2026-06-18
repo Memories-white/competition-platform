@@ -259,6 +259,76 @@ CMD service ssh start && python3 -m http.server 80 --directory /var/www & tail -
         flash(f"题库题目「{title}」创建成功", "success")
         return redirect(url_for("presets"))
 
+    # ── Web SSH 终端桥接（xterm.js ↔ 容器 SSH）──
+    import threading as _threading
+
+    _term_sessions = {}  # sid -> paramiko.Channel
+
+    @socketio.on("term_connect")
+    def _term_connect(data):
+        """建立到容器的 SSH 连接，启动交互式 shell"""
+        sid = request.sid
+        try:
+            import paramiko as _paramiko
+            ssh = _paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(_paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=data.get("host", Config.HOST_IP),
+                port=int(data.get("port", 22)),
+                username=data.get("user", "root"),
+                password=data.get("pass", "password"),
+                timeout=5,
+            )
+            chan = ssh.invoke_shell(term="xterm-256color", width=120, height=40)
+            _term_sessions[sid] = (ssh, chan)
+
+            def _reader():
+                while True:
+                    try:
+                        buf = chan.recv(4096)
+                        if not buf:
+                            break
+                        socketio.emit("term_data", {"data": buf.decode("utf-8", errors="replace")}, room=sid)
+                    except Exception:
+                        break
+
+            t = _threading.Thread(target=_reader, daemon=True)
+            t.start()
+            socketio.emit("term_ready", {"ok": True}, room=sid)
+        except Exception as e:
+            socketio.emit("term_ready", {"ok": False, "error": str(e)}, room=sid)
+
+    @socketio.on("term_input")
+    def _term_input(data):
+        sid = request.sid
+        session = _term_sessions.get(sid)
+        if session:
+            try:
+                session[1].send(data.get("data", ""))
+            except Exception:
+                pass
+
+    @socketio.on("term_resize")
+    def _term_resize(data):
+        sid = request.sid
+        session = _term_sessions.get(sid)
+        if session:
+            try:
+                session[1].resize_pty(width=int(data.get("cols", 120)), height=int(data.get("rows", 40)))
+            except Exception:
+                pass
+
+    @socketio.on("term_disconnect")
+    def _term_disconnect():
+        sid = request.sid
+        session = _term_sessions.pop(sid, None)
+        if session:
+            try:
+                session[1].close()
+                session[0].close()
+            except Exception:
+                pass
+
     @app.context_processor
     def inject_user():
         from models.models import User
