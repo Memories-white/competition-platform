@@ -42,6 +42,23 @@ var term = new Terminal({
     rows: 35,
 });
 term.open(document.getElementById('terminal'));
+
+// 复制：选中即自动复制到剪贴板
+term.attachCustomKeyEventHandler(function(e) {
+    if (e.ctrlKey && e.key === 'c' && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection()).catch(function(){});
+        return false;
+    }
+    // 粘贴：Ctrl+Shift+V 或右键粘贴
+    if (e.ctrlKey && e.key === 'v') {
+        navigator.clipboard.readText().then(function(text) {
+            socket.emit('term_input', {data: text});
+        }).catch(function(){});
+        return false;
+    }
+    return true;
+});
+
 term.write('正在连接容器 SSH…\r\n');
 
 // 建立 SocketIO SSH 桥接

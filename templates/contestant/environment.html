@@ -65,9 +65,6 @@
                         <button class="btn btn-primary btn-sm" onclick="copyCmd()">
                             <i class="bi bi-clipboard"></i> 复制
                         </button>
-                        <a href="{{ url_for('contestant.terminal', env_id=env.id) }}" class="btn btn-success btn-sm">
-                            <i class="bi bi-display"></i> Web 终端
-                        </a>
                     </div>
                     {# 登录信息（如 root/password） #}
                     {% if challenge.login_info %}
@@ -77,19 +74,16 @@
                     {% endif %}
                 </div>
 
-                {# Web 访问入口（仅当有 web_port 时显示） #}
-                {% if env.web_port and env.web_port > 0 %}
+                {# Web 终端入口（新窗口打开，替代原 Web 访问链接） #}
                 <div class="alert alert-success small mb-3">
-                    <i class="bi bi-link-45deg me-1"></i>
-                    <strong>Web 访问：</strong>
-                    <a href="http://{{ host_ip }}:{{ env.web_port }}" target="_blank" class="fw-bold">
-                        http://{{ host_ip }}:{{ env.web_port }}
+                    <i class="bi bi-display me-1"></i>
+                    <strong>Web 终端：</strong>
+                    <span class="text-muted">浏览器内直接操作容器命令行</span>
+                    <a href="{{ url_for('contestant.terminal', env_id=env.id) }}" target="_blank"
+                       class="btn btn-success btn-sm ms-2">
+                        <i class="bi bi-box-arrow-up-right"></i> 打开 Web 终端
                     </a>
-                    <button class="btn btn-outline-success btn-sm ms-2" onclick="copyUrl('http://{{ host_ip }}:{{ env.web_port }}')">
-                        <i class="bi bi-clipboard"></i> 复制
-                    </button>
                 </div>
-                {% endif %}
 
                 {# 管理员应急入口 #}
                 <div class="small text-muted">
@@ -161,20 +155,13 @@
 
 {% block extra_scripts %}
 <script>
-// ── 复制 Web 访问地址到剪贴板 ──
-function copyUrl(url) {
-    navigator.clipboard.writeText(url).then(() => {
-        alert('链接已复制到剪贴板');
-    }).catch(() => {
-        prompt('复制以下链接：', url);
-    });
-}
-
 // ── 复制 SSH 连接命令到剪贴板 ──
 function copyCmd() {
     const cmd = document.getElementById('sshCmd').textContent;
     navigator.clipboard.writeText(cmd).then(() => {
-        alert('SSH 命令已复制到剪贴板');
+        // 按钮短暂变绿提示已复制
+        const btns = document.querySelectorAll('button');
+        btns.forEach(b => { if (b.textContent.includes('复制')) { b.innerHTML = '<i class=\"bi bi-check-lg\"></i> 已复制'; b.classList.add('btn-success'); b.classList.remove('btn-primary'); setTimeout(() => { b.innerHTML = '<i class=\"bi bi-clipboard\"></i> 复制'; b.classList.remove('btn-success'); b.classList.add('btn-primary'); }, 1500); }});
     }).catch(() => {
         prompt('复制以下命令：', cmd);
     });
