@@ -55,6 +55,76 @@
 - **Docker Desktop** (Windows/Mac) 或 **Docker Engine** (Linux)
 - Windows 11 / macOS / Linux
 
+### Linux 安装指南（Ubuntu/Debian）
+
+#### 1. 安装 Python 3.10+
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+python3 --version   # 确认版本 >= 3.10
+```
+
+#### 2. 安装 Docker Engine
+
+```bash
+# 卸载旧版本（如有）
+sudo apt remove -y docker docker-engine docker.io containerd runc
+
+# 安装依赖
+sudo apt install -y ca-certificates curl gnupg lsb-release
+
+# 添加 Docker 官方 GPG 密钥
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# 添加 Docker 仓库
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 安装 Docker
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 将当前用户加入 docker 组（免 sudo）
+sudo usermod -aG docker $USER
+newgrp docker
+docker ps   # 验证安装
+```
+
+#### 3. 配置 Docker 镜像加速器（国内环境）
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://registry.cn-hangzhou.aliyuncs.com"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+#### 4. 安装项目依赖
+
+```bash
+git clone https://github.com/Memories-white/competition-platform.git
+cd competition-platform
+pip install -r requirements.txt
+```
+
+#### 5. 启动
+
+```bash
+python app.py
+```
+
+浏览器访问 **http://服务器IP:5000**，首次启动将自动进入系统初始化引导页。
+
+### Windows 安装指南
+
 ### 安装与运行
 
 ```bash
